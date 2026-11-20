@@ -48,3 +48,16 @@ Ngoài ra một test không bắt được lỗi gài (tắt đẩy Bóng Mực 
 | **Tổng Phase 3** | | **~100k** |
 
 **Cách tiết kiệm (30 phút):** ưu tiên headless (chấm điểm) → test → ADR/CHANGELOG (DoD) → UI tối thiểu; gom sửa vào script; không thử chụp màn hình.
+
+## Phase 4
+| Bước | Việc agent làm | Ước tính token |
+|---|---|---|
+| Soak + tìm nguyên nhân bộ nhớ (JIT, không rò rỉ) | chạy 3/10/30 Đêm, so 4 cờ V8 | ~20k |
+| Bảng xếp hạng (module + server + export + 5 test) | | ~20k |
+| Bench (script trình duyệt thật, cảnh bench, InstancedMesh, 4 lần chạy + gỡ lỗi đo bộ nhớ) | | ~55k |
+| Accessibility (đổi phím, chỉ báo, giảm chuyển động, chữ lớn) | | ~20k |
+| README, CHANGELOG, retro, notes, proof, Release | | ~35k |
+| **Tổng Phase 4** | | **~150k** |
+
+**Cách tiết kiệm:** chạy bench ở nền và viết tài liệu trong lúc chờ; không chạy tác vụ nặng song song với bench; dừng tối ưu FPS khi giới hạn là GPU máy dev.
+**Tổng dự án:** ~575k token (ước tính).
