@@ -1,0 +1,21 @@
+{
+  "nights": 10,
+  "crashes": 0,
+  "results": [
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost"
+  ],
+  "mem_start_mb": 31.6,
+  "mem_end_mb": 35.2,
+  "duration_s": 6,
+  "node": "v26.13.1",
+  "os": "win32 x64"
+}

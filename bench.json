@@ -1,0 +1,14 @@
+{
+  "contract_version": "1.3",
+  "avg_fps": 30.58,
+  "p1_low_fps": 2.13,
+  "frame_ms_p95": 53.1,
+  "frames": 918,
+  "load_ms": 14645,
+  "peak_mem_mb": 743,
+  "vsync_off": true,
+  "renderer": "three.js r170 WebGL2 – ANGLE (Intel, Intel(R) HD Graphics 520 (0x00001916) Direct3D11 vs_5_0 ps_5_0, D3D11) – chrome.exe (Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36)",
+  "os": "Windows_NT 10.0.19045 x64 – Intel(R) Core(TM) i5-6300U CPU @ 2.40GHz – 8 GB",
+  "viewport": "1280x720",
+  "notes": "vsync disabled with --disable-gpu-vsync --disable-frame-rate-limit; peak_mem_mb = max RSS of the whole browser process tree (sampled once right after measuring, wmic)"
+}
