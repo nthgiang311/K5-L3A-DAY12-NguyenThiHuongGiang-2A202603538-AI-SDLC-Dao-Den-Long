@@ -4,7 +4,7 @@ Game 3D (three.js) + chế độ headless theo **Test Contract v1.0**. Node >= 1
 
 ## Lệnh
 - Cài: `npm install` · Chơi: `npm start` (http://localhost:8080)
-- Test (unit + headless CLI): `npm test` — phải xanh trước khi kết thúc việc
+- Test (unit + headless CLI): `npm test` (liệt kê file test, không dùng glob: Node < 21 không hỗ trợ) — phải xanh trước khi kết thúc việc
 - Bằng chứng: `npm run proof` → `docs/proof/phase-N/` (sinh tự động, KHÔNG sửa tay)
 - Headless: `node src/headless.js --seed 1 --night 1 --ticks 600 --out out.jsonl [--scenario f] [--inputs f]`
 
