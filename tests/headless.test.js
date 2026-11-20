@@ -37,7 +37,7 @@ test('output: snapshot at tick 0 and every N ticks, end line last', () => {
   const s = snaps[1];
   for (const k of ['sim_tick', 'state', 'time_left_s', 'score', 'player', 'lanterns', 'shades', 'motes_active']) assert.ok(k in s, k);
   assert.equal(s.sim_tick, 10);
-  assert.equal(s.time_left_s, 299.833);
+  assert.equal(s.time_left_s, 239.833); // [P3 change] night 1 is 240 s
 });
 
 test('default snapshot-every is 10', () => {

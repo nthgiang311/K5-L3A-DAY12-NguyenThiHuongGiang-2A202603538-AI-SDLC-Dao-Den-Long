@@ -1,4 +1,5 @@
 // Generates tests/scenarios/win_run.{scenario,inputs}.json for night 1:
+// (Ticket-03: no early win -> the night is shortened to 40 s so dawn comes while the lanterns still burn)
 // lantern_cost motes on the straight line from the start to each lantern; the player walks to each
 // lantern (camera yaw pointed at it, move [0,1]), presses interact, walks back. No shades.
 import fs from 'node:fs';
@@ -26,6 +27,6 @@ for (const [x, , z] of LEVELS[1].lanterns) {
 frames.push({ tick: t, move: [0, 0] });
 
 fs.writeFileSync('tests/scenarios/win_run.scenario.json',
-  JSON.stringify({ random_motes: false, random_shades: false, motes, shades: [] }, null, 2) + '\n');
+  JSON.stringify({ random_motes: false, random_shades: false, motes, shades: [], time_left_s: 40 }, null, 2) + '\n');
 fs.writeFileSync('tests/scenarios/win_run.inputs.json', JSON.stringify({ frames }, null, 2) + '\n');
 console.log(`win_run: ${frames.length} frames, last tick ${t}`);
