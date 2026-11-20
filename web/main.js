@@ -8,6 +8,8 @@ import { sfx, setVolume, unlock, startMusic, stopMusic } from '/web/audio.js';
 const tuning = (await (await fetch('/game.contract.json')).json()).tuning;
 import { mulberry32 } from '/src/sim/rng.js';
 const Q = new URLSearchParams(location.search);
+// ?shot=1 : README screenshot (scripts/screenshot.js) - a staged night-1 scene, canvas captured after 4 s
+const SHOT = Q.has('shot');
 const BENCH = Q.has('bench') ? { seed: parseInt(Q.get('seed') || '42', 10), duration: parseFloat(Q.get('duration') || '30') } : null;
 
 // ---------- standard palette (Ticket-02) ----------
@@ -333,7 +335,10 @@ function showIntro(n) {
 }
 function startNight(n) {
   for (const map of Object.values(meshes)) { for (const m of map.values()) scene.remove(m); map.clear(); }
-  sim = createSim(tuning, { seed: runSeed + n - 1, night: n });
+  const shotScene = SHOT ? { player: { pos: [-4, 0, 14], carried: 7 }, lanterns: [{ id: 'L1', lit: true, fuel: 80 }, { id: 'L5', lit: true, fuel: 25 }],
+    shades: [{ id: 'S1', pos: [6, 1, 22], state: 'wander' }, { id: 'S2', pos: [-20, 1, 14], state: 'wander' }, { id: 'S3', pos: [3, 1, 9], state: 'stunned', state_ticks_left: 600 }],
+    random_shades: false } : null;
+  sim = createSim(tuning, { seed: runSeed + n - 1, night: n, scenario: shotScene });
   buildLevel(sim.level);
   for (const l of sim.state.lanterns) {
     const g = makeLantern();
@@ -660,11 +665,16 @@ function frame(now) {
   }
   for (const id of ['flames', 'clock', 'topright', 'bar', 'cds']) $(id).style.visibility = sim && mode !== 'menu' ? 'visible' : 'hidden';
   renderer.render(scene, camera);
+  if (SHOT && sim && elapsed > 4 && !window.__shotDone) {
+    window.__shotDone = true; // capture right after render (same task, drawing buffer still valid)
+    fetch('/shot', { method: 'POST', body: renderer.domElement.toDataURL('image/png') });
+  }
   if (bench && bench.done) return; // bench finished: stop rendering so the browser is idle while memory is sampled
   requestAnimationFrame(frame);
 }
 applyCb();
 if (BENCH) startBench();
+if (SHOT) { runSeed = 5; showIntro(1); setMode('play'); camYaw = 20; }
 requestAnimationFrame(frame);
 
 // ---------- benchmark scene (Ticket-04 §1) ----------

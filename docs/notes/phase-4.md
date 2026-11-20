@@ -20,6 +20,7 @@
 | Bench | lệnh chạy, thoát 0, `bench.json` đủ trường, đúng cảnh | `bench.json` (máy dev) – xem kết quả bên dưới |
 | Soak | 10 Đêm, crashes 0, mem_end ≤ 1,2 × mem_start | `soak.json`, test `soak` trong `tests/leaderboard.test.js`, CI |
 | Bảng xếp hạng | tên 3–12, top 10, sắp xếp, lưu đĩa, export đúng thứ tự | `tests/leaderboard.test.js` (5 test) + thủ công (màn hình) |
+| Ảnh chụp README | game tự chụp canvas trong Chrome thật (`node scripts/screenshot.js`) | `docs/demo/screenshot.png` – bằng chứng hình ảnh tự động đầu tiên cho phần 3D |
 | Đổi phím | mọi hành động, báo trùng, khôi phục mặc định, lưu | **thủ công** (Cài đặt → Phím) |
 | Phụ đề / chỉ báo | Bóng Mực xuất hiện (+ mũi tên mép màn hình), gió, 10 s cuối, đèn < 30 dầu | **thủ công** (`#cue`, `#sarrow`, `#wind`) |
 | Giảm chuyển động | tắt rung camera + chớp đỏ khi bị đánh | **thủ công** |
