@@ -54,6 +54,27 @@ test('determinism: same seed + scenario + inputs -> identical output; other seed
   assert.notEqual(a, c);
 });
 
+test('--night 2 and 3 accepted, --night 4 rejected (exit 1)', () => {
+  for (const n of ['2', '3']) {
+    const { lines } = runTo('night' + n, ['--seed', '1', '--night', n, '--ticks', '10']);
+    assert.equal(lines[0].night, Number(n));
+    assert.deepEqual(lines[1], { type: 'event', tick: 0, name: 'night_start', data: { night: Number(n) } });
+  }
+  assert.equal(headless(['--seed', '1', '--night', '4', '--ticks', '1', '--out', path.join(TMP, 'x.jsonl')]).status, 1);
+});
+
+test('malformed v1.1 fields -> exit 2', () => {
+  for (const [name, doc, flag] of [
+    ['b6.json', { frames: [{ tick: 0, pause: 'yes' }] }, '--inputs'],
+    ['b7.json', { shades: [{ pos: [1, 1, 1], state: 'angry' }] }, '--scenario'],
+    ['b8.json', { drifters: [{ pos: [1, 1] }] }, '--scenario'],
+    ['b9.json', { player: { invuln_ticks: -1 } }, '--scenario'],
+  ]) {
+    const r = headless(['--seed', '1', '--night', '2', '--ticks', '5', '--out', path.join(TMP, 'x.jsonl'), flag, writeTmp(name, doc)]);
+    assert.equal(r.status, 2, name);
+  }
+});
+
 test('game over stops early with exit 0, end.ticks = steps run', () => {
   const sc = writeTmp('lose.json', { random_motes: false, random_shades: false, player: { flames: 1 }, shades: [{ id: 'S1', pos: [0.5, 0, 0] }] });
   const { lines } = runTo('lose', ['--seed', '1', '--night', '1', '--ticks', '500', '--scenario', sc]);
@@ -64,7 +85,7 @@ test('game over stops early with exit 0, end.ticks = steps run', () => {
 test('coordinates rounded to 3 decimals', () => {
   const inp = writeTmp('diag.json', { frames: [{ tick: 0, move: [0.3, 0.7], cam_yaw_deg: 17 }] });
   const { lines } = runTo('round', ['--seed', '1', '--night', '1', '--ticks', '7', '--snapshot-every', '7', '--inputs', inp]);
-  for (const v of lines[1].player.pos) assert.equal(v, Math.round(v * 1000) / 1000);
+  for (const v of lines.find((l) => l.type === 'snapshot' && l.tick === 7).player.pos) assert.equal(v, Math.round(v * 1000) / 1000);
 });
 
 test('exit code 2 on malformed inputs/scenario', () => {
@@ -91,13 +112,14 @@ test('other errors -> non-zero exit (not 2) with stderr message', () => {
   assert.match(r.stderr, /ticks/);
 });
 
-test('scenario from contract example builds without events or score', () => {
+// [P2 change] v1.1 adds the night_start event at tick 0, so the output has 3 lines instead of 2.
+test('scenario from contract example builds without gameplay events or score', () => {
   const { lines } = runTo('example', ['--seed', '1', '--night', '1', '--ticks', '0', '--scenario', path.join(SCN, 'contract_example.scenario.json')]);
   const s = lines[0];
   assert.equal(s.score, 0);
   assert.equal(s.motes_active, 1);
   assert.deepEqual(s.shades.map((x) => x.id), ['S1']);
-  assert.equal(lines.length, 2);
+  assert.deepEqual(lines.slice(1).map((l) => l.name || l.type), ['night_start', 'end']);
 });
 
 test('scripted full run of the default level reaches won', () => {

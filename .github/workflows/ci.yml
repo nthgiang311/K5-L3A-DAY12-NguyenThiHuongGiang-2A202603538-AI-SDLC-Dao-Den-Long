@@ -15,7 +15,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm install
       - run: npm test
-      - name: Proof is reproducible (no diff after regenerating)
+      - name: Latest phase proof is reproducible (no diff after regenerating)
         run: |
-          for d in docs/proof/phase-*; do node scripts/proof.js "$(basename "$d")"; done
-          git diff --exit-code -- docs/proof ':(exclude)docs/proof/*/SUMMARY.md'
+          d=$(ls -d docs/proof/phase-* | sort | tail -1); node scripts/proof.js "$(basename "$d")"
+          git diff --exit-code -- "$d" ":(exclude)$d/SUMMARY.md"

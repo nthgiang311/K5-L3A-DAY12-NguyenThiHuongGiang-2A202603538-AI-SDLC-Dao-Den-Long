@@ -1,1 +1,1 @@
-{ "random_motes": false, "random_shades": false, "motes": [], "shades": [], "time_left_s": 5 }
+{"random_motes": false, "random_shades": false, "random_drifters": false, "wind_enabled": false, "motes": [], "shades": [], "drifters": [], "time_left_s": 5}

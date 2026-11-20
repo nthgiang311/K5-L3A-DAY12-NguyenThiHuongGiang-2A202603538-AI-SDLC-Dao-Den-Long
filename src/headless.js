@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Headless runner - Test Contract v1.0
-// node src/headless.js --seed <int> --night 1 [--scenario f.json] [--inputs f.json]
+// Headless runner - Test Contract v1.1
+// node src/headless.js --seed <int> --night 1|2|3 [--scenario f.json] [--inputs f.json]
 //                      --ticks <int> --out <file.jsonl> [--snapshot-every <int, default 10>]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,7 +40,7 @@ function parseArgs(argv) {
     inputs: a.inputs,
   };
   if (!opts.out) throw new UsageError('missing --out');
-  if (opts.night !== 1) throw new UsageError(`unsupported --night ${opts.night} (only 1)`);
+  if (![1, 2, 3].includes(opts.night)) throw new UsageError(`unsupported --night ${opts.night} (1, 2 or 3)`);
   if (opts.ticks < 0) throw new UsageError('--ticks must be >= 0');
   if (opts.every < 1) throw new UsageError('--snapshot-every must be >= 1');
   return opts;
@@ -67,14 +67,16 @@ export function runHeadless(opts, tuning) {
   const inputs = opts.inputs ? readJson(opts.inputs, validateInputs) : null;
   if (scenario && scenario.lanterns) {
     for (const l of scenario.lanterns) {
-      if (!/^L[1-5]$/.test(l.id)) process.stderr.write(`warning: scenario lantern id ${l.id} not in level, ignored\n`);
+      if (!/^L[1-7]$/.test(l.id)) process.stderr.write(`warning: scenario lantern id ${l.id} not in level, ignored\n`);
     }
   }
-  const sim = createSim(tuning, { seed: opts.seed, scenario });
+  const sim = createSim(tuning, { seed: opts.seed, scenario, night: opts.night });
   const inputAt = makeInputReader(inputs);
   const lines = [JSON.stringify(sim.snapshot())];
+  lines.push(JSON.stringify({ type: 'event', tick: 0, name: 'night_start', data: { night: opts.night } }));
+  const running = () => sim.state.state === 'playing' || sim.state.state === 'paused';
   let k = 0;
-  for (; k < opts.ticks && sim.state.state === 'playing'; k++) {
+  for (; k < opts.ticks && running(); k++) {
     const events = sim.step(inputAt(k));
     for (const e of events) lines.push(JSON.stringify({ type: 'event', tick: k + 1, name: e.name, data: e.data }));
     if ((k + 1) % opts.every === 0) lines.push(JSON.stringify(sim.snapshot()));

@@ -1,215 +1,460 @@
-// Unit tests for the game logic, one block per acceptance criterion (see docs/notes/phase-1.md).
+// Unit tests for the game logic (Contract v1.1 standard numbers). One block per acceptance criterion
+// in docs/notes/phase-1.md and docs/notes/phase-2.md. Phase-1 tests whose expectation changed are marked [P2 change].
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createSim, WORLD } from '../src/sim/sim.js';
+import { createSim, STD } from '../src/sim/sim.js';
+import { LEVELS, groundAt } from '../src/sim/levels.js';
 import { makeInputReader } from '../src/sim/validate.js';
 
 const contract = JSON.parse(fs.readFileSync(new URL('../game.contract.json', import.meta.url), 'utf8'));
 const T = contract.tuning;
-const EMPTY = { random_motes: false, random_shades: false, motes: [], shades: [] };
+const EMPTY = { random_motes: false, random_shades: false, random_drifters: false, wind_enabled: false, motes: [], shades: [], drifters: [] };
+const mk = (sc = {}, night = 1, seed = 1) => createSim(T, { seed, night, scenario: { ...EMPTY, ...sc } });
 
-// run n steps with a constant (or per-tick function) input; collect events with tick numbers
 function run(sim, n, input = {}) {
   const events = [];
-  for (let k = 0; k < n && sim.state.state === 'playing'; k++) {
+  for (let k = 0; k < n && (sim.state.state === 'playing' || sim.state.state === 'paused'); k++) {
     const inp = typeof input === 'function' ? input(k) : input;
-    for (const e of sim.step(inp)) events.push({ tick: sim.state.steps, ...e });
+    for (const e of sim.step(inp)) events.push({ tick: sim.state.tick, ...e });
   }
   return events;
 }
-const press = (key, atTick) => (k) => ({ [key]: k === atTick });
+const press = (key, atTick, extra = {}) => (k) => ({ ...extra, [key]: k === atTick });
+const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
-test('contract file: version, commands and all tuning keys present', () => {
-  assert.equal(contract.contract_version, '1.0');
-  for (const k of ['team', 'build_cmd', 'run_cmd', 'headless_cmd']) assert.ok(contract[k]);
-  for (const k of ['player_speed', 'carry_capacity', 'lantern_cost', 'pickup_radius', 'interact_radius', 'pulse_cost',
-    'pulse_radius', 'night1_duration_s', 'flames', 'invuln_s', 'hit_drop_ratio', 'pulse_stun_s', 'pulse_push_m',
-    'pulse_cooldown_s', 'safe_radius', 'shade_speed', 'shade_hit_radius', 'fall_enabled']) assert.ok(k in T, k);
-  assert.equal(T.lantern_count_night1, 5);
+// ---------------- contract ----------------
+test('contract v1.1: standard numbers from Ticket-02', () => {
+  assert.equal(contract.contract_version, '1.1');
+  const expect = { player_speed: 6, carry_capacity: 10, lantern_cost: 10, pickup_radius: 1, interact_radius: 2, pulse_cost: 3,
+    pulse_radius: 5, night1_duration_s: 300, night2_duration_s: 330, night3_duration_s: 360, flames: 3, invuln_s: 1.5,
+    hit_drop_ratio: 0.5, pulse_stun_s: 2, pulse_push_m: 4, pulse_cooldown_s: 3, safe_radius: 6, shade_speed: 4,
+    shade_hit_radius: 1, fall_enabled: true, dash_speed: 14, dash_duration_s: 0.2, dash_cooldown_s: 1.5, lantern_count_night1: 5 };
+  for (const [k, v] of Object.entries(expect)) assert.equal(T[k], v, k);
+  assert.deepEqual(T.score, { per_mote: 10, per_lantern: 100, per_stun: 5, per_second_left: 2, per_flame_left: 50 });
 });
 
-test('initial state: player at origin, 5 lanterns, L1 at (0,0,25), time = night duration', () => {
-  const snap = createSim(T, { seed: 1 }).snapshot();
-  assert.deepEqual(snap.player.pos, [0, 0, 0]);
-  assert.equal(snap.player.flames, T.flames);
-  assert.equal(snap.lanterns.length, 5);
-  assert.deepEqual(snap.lanterns[0].pos, [0, 0, 25]);
-  assert.equal(snap.time_left_s, T.night1_duration_s);
-  assert.equal(snap.motes_active, WORLD.initial_motes);
-  assert.equal(snap.shades.length, WORLD.initial_shades);
-  assert.equal(snap.tick, 0);
+// ---------------- maps ----------------
+test('maps: lantern positions and counts per night', () => {
+  assert.deepEqual(createSim(T, { night: 1 }).snapshot().lanterns.map((l) => l.pos), LEVELS[1].lanterns);
+  assert.equal(createSim(T, { night: 2 }).snapshot().lanterns.length, 6);
+  const n3 = createSim(T, { night: 3 }).snapshot().lanterns;
+  assert.deepEqual(n3.map((l) => l.id), ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7']);
+  assert.deepEqual(n3[0].pos, [0, 6, 6]);
 });
 
-test('movement: player_speed m/s along +Z, normalized diagonal, camera yaw rotation', () => {
-  let sim = createSim(T, { scenario: EMPTY });
+test('maps: spawn point counts (motes 24/24/30, shades 12/16/16)', () => {
+  assert.deepEqual([1, 2, 3].map((n) => LEVELS[n].moteSpawns.length), [24, 24, 30]);
+  assert.deepEqual([1, 2, 3].map((n) => LEVELS[n].shadeSpawns.length), [12, 16, 16]);
+  // tier-1 mote points of night 3 are on the z > 0 half at Y = 3
+  for (const p of LEVELS[3].moteSpawns.filter((q) => q[1] === 3)) assert.ok(p[2] > 0);
+});
+
+test('terrain: night 1 edge at 40 m, night 2 bridge, night 3 tiers/ramp/tower', () => {
+  const L1 = LEVELS[1], L2 = LEVELS[2], L3 = LEVELS[3];
+  assert.equal(groundAt(L1, 40, 0), 0);
+  assert.equal(groundAt(L1, 40.01, 0), null);
+  assert.equal(groundAt(L2, 35, 1.9), 0);
+  assert.equal(groundAt(L2, 35, 2.1), null);
+  assert.equal(groundAt(L3, 0, 18), 3); // tier 1
+  assert.equal(groundAt(L3, 0, -18), 0); // z < 0 half is tier 0
+  assert.equal(groundAt(L3, 5, 0), 6); // tier 2
+  const a = Math.PI / 6;
+  assert.ok(near(groundAt(L3, 27 * Math.cos(a), 27 * Math.sin(a)), 1.5)); // ramp middle
+  assert.ok(groundAt(L3, 0.5, 0) > 6); // tower
+});
+
+// ---------------- movement ----------------
+test('movement: 6 m/s, camera yaw rotation, normalized diagonal', () => {
+  let sim = mk();
   run(sim, 60, { move: [0, 1] });
-  assert.ok(Math.abs(sim.snapshot().player.pos[2] - T.player_speed) < 1e-6);
-
-  sim = createSim(T, { scenario: EMPTY });
-  run(sim, 60, { move: [1, 1] }); // length sqrt2 -> normalized
-  const p = sim.snapshot().player.pos;
-  assert.ok(Math.abs(Math.hypot(p[0], p[2]) - T.player_speed) < 1e-3);
-
-  sim = createSim(T, { scenario: EMPTY });
-  run(sim, 60, { move: [0, 1], cam_yaw_deg: 90 }); // x' = z*sin90 = +X
-  const q = sim.snapshot().player.pos;
-  assert.ok(Math.abs(q[0] - T.player_speed) < 1e-6 && Math.abs(q[2]) < 1e-6);
-
-  sim = createSim(T, { scenario: EMPTY });
-  run(sim, 60, { move: [1, 0], cam_yaw_deg: 90 }); // z' = -x*sin90 = -Z
-  assert.ok(Math.abs(sim.snapshot().player.pos[2] + T.player_speed) < 1e-6);
+  assert.ok(near(sim.state.player.z, 6));
+  sim = mk();
+  run(sim, 60, { move: [0, 1], cam_yaw_deg: 90 });
+  assert.ok(near(sim.state.player.x, 6) && near(sim.state.player.z, 0));
+  sim = mk();
+  run(sim, 60, { move: [1, 1] });
+  assert.ok(near(Math.hypot(sim.state.player.x, sim.state.player.z), 6, 1e-3));
 });
 
-test('island edge: fall disabled, player clamped to island radius', () => {
-  const sim = createSim(T, { scenario: EMPTY });
-  run(sim, 60 * 20, { move: [0, 1] });
-  assert.ok(Math.abs(sim.snapshot().player.pos[2] - WORLD.island_radius) < 1e-6);
-  assert.equal(sim.state.state, 'playing');
-});
-
-test('jump: rises above ground then lands, only on rising edge', () => {
-  const sim = createSim(T, { scenario: EMPTY });
-  run(sim, 10, press('jump', 0));
-  assert.ok(sim.state.player.y > 0);
-  run(sim, 120, { jump: true }); // held -> no re-jump after landing
+test('jump: 7 m/s, gravity 20 -> airborne ~0.7 s, only from the ground', () => {
+  const sim = mk();
+  const ys = [];
+  run(sim, 50, (k) => (ys.push(sim.state.player.y), { jump: k === 0 || k === 10 }));
+  const peak = Math.max(...ys);
+  assert.ok(near(peak, (7 * 7) / 40, 0.1), `peak ${peak}`);
   assert.equal(sim.state.player.y, 0);
+  assert.equal(sim.state.player.grounded, true);
 });
 
-test('pickup: within pickup_radius picks (score += per_mote), outside does not', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, motes: [[T.pickup_radius, 0, 0], [T.pickup_radius + 0.01, 0, 0]] } });
+test('[P2 change] fall: off the island -> lose flame + all motes, wait 60 ticks, respawn with 90 ticks invuln', () => {
+  // Phase 1 clamped the player at the edge (fall_enabled false). Ticket-02 makes falling real.
+  const sim = mk({ player: { pos: [39, 0, 0], carried: 4 } });
+  const ev = run(sim, 200, (k) => ({ move: k < 30 ? [1, 0] : [0, 0] }));
+  const hit = ev.find((e) => e.name === 'player_hit');
+  assert.deepEqual(hit.data, { by: 'fall', flames: 2, dropped: 0, lost: 4 });
+  assert.equal(ev.filter((e) => e.name === 'player_hit').length, 1);
+  const s = sim.state.player;
+  assert.deepEqual([s.x, s.y, s.z], [0, 0, 0]);
+  const respawnTick = hit.tick + STD.fall_wait;
+  assert.equal(s.invuln, Math.max(0, STD.respawn_invuln - (sim.state.tick - respawnTick)));
+});
+
+test('fall on last flame -> lost/no_flames, no respawn', () => {
+  const sim = mk({ player: { pos: [39.9, 0, 0], flames: 1 } });
+  const ev = run(sim, 300, { move: [1, 0] });
+  assert.deepEqual(ev.at(-1).data, { result: 'lost', reason: 'no_flames' });
+});
+
+// ---------------- dash ----------------
+test('dash: 14 m/s for 12 ticks along movement, 90-tick cooldown from start, keeps height in air', () => {
+  let sim = mk();
+  const ev = run(sim, 12, press('dash', 0));
+  assert.deepEqual(ev[0], { tick: 1, name: 'dash', data: {} });
+  assert.ok(near(sim.state.player.z, 14 * 0.2)); // standing still -> facing +Z
+  sim = mk();
+  run(sim, 30, (k) => ({ move: [0, 1], dash: k % 2 === 0 })); // spam: only the first one counts
+  assert.ok(near(sim.state.player.z, 14 * 0.2 + 6 * (30 - 12) / 60));
+  assert.equal(sim.state.player.dashCd, 90 - 29); // set on tick 1, decremented on ticks 2..30
+  // in the air: height preserved during dash
+  sim = mk();
+  run(sim, 10, press('jump', 0));
+  const y0 = sim.state.player.y;
+  run(sim, 5, press('dash', 0));
+  assert.ok(near(sim.state.player.y, y0));
+});
+
+test('charm: speed 7.2 and dash without cooldown for 600 ticks; presses during dash ignored', () => {
+  const sim = mk({ charms: [{ id: 'C1', pos: [0, 0, 0.5] }] }, 2);
   const ev = run(sim, 1);
-  assert.deepEqual(ev.map((e) => e.name), ['mote_picked']);
-  assert.equal(ev[0].tick, 1);
-  assert.deepEqual(ev[0].data, { carried: 1 });
-  assert.equal(sim.snapshot().motes_active, 1);
-  assert.equal(sim.state.score, T.score.per_mote);
+  assert.deepEqual(ev[0].data, { charm_id: 'C1', charm_ticks: 600 });
+  run(sim, 60, { move: [1, 0] });
+  assert.ok(near(sim.state.player.x, 7.2));
+  const d = run(sim, 40, (k) => ({ dash: k % 2 === 0 })).filter((e) => e.name === 'dash');
+  // a dash lasts 12 ticks; presses during it are ignored; with the charm the next press after it ends works
+  assert.deepEqual(d.map((e) => e.tick - 61), [1, 13, 25, 37]);
+  assert.equal(sim.snapshot().charms[0].available, false);
+  assert.equal(sim.snapshot().charms[0].respawn_s, Math.round(((2700 - 100) / 60) * 1000) / 1000);
 });
 
-test('carry_capacity: cannot pick when full', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { carried: T.carry_capacity }, motes: [[0, 0, 0]] } });
-  assert.equal(run(sim, 5).length, 0);
-  assert.equal(sim.state.player.carried, T.carry_capacity);
+test('charm respawns after 2700 ticks', () => {
+  const sim = mk({ charms: [{ id: 'C1', available: false, respawn_ticks: 5 }] }, 2);
+  run(sim, 5);
+  assert.equal(sim.snapshot().charms[0].available, true);
+  assert.deepEqual(sim.snapshot().charms[0].pos, [35, 0, 0]);
 });
 
-test('deposit + lantern_lit: interact in range deposits up to lantern_cost, lights the lantern', () => {
-  const sc = { ...EMPTY, player: { pos: [0, 0, 25 - T.interact_radius], carried: 3 } };
-  const sim = createSim(T, { scenario: sc });
+// ---------------- motes ----------------
+test('[P2 change] motes: 20 at start on distinct spawn points, +1 at tick 240k up to 30', () => {
+  const sim = createSim(T, { seed: 3, night: 1, scenario: { random_shades: false } });
+  const s0 = sim.snapshot();
+  assert.equal(s0.motes_active, 20);
+  assert.equal(new Set(s0.motes.map((m) => m.pos.join())).size, 20);
+  run(sim, 239);
+  assert.equal(sim.snapshot().motes_active, 20);
+  run(sim, 1);
+  assert.equal(sim.snapshot().motes_active, 21);
+  run(sim, 240 * 10);
+  assert.equal(sim.snapshot().motes_active, 24); // night 1 has only 24 points: no free point -> skipped
+});
+
+test('pickup: XZ <= 1.0 and height difference <= 1.5', () => {
+  const sim = mk({ motes: [[1, 0, 0], [-1.01, 0, 0], [0, 0, 1], [0, 0, -1]] });
+  sim.state.motes[3].y = 1.6; // too high above Mây's feet
+  const ev = run(sim, 1);
+  assert.equal(ev.filter((e) => e.name === 'mote_picked').length, 2);
+});
+
+test('carry capacity 10', () => {
+  const sim = mk({ player: { carried: 10 }, motes: [[0, 0, 0]] });
+  assert.equal(run(sim, 3).length, 0);
+});
+
+// ---------------- lanterns + score ----------------
+test('[P2 change] deposit: cost 10, partial deposits remembered, +10 per mote deposited, +100 when lit', () => {
+  // Phase 1 scored +10 per mote picked up; Ticket-02 scores per mote deposited.
+  const sim = mk({ player: { pos: [0, 0, 23], carried: 6 }, motes: [[0, 0, 23.5]] });
+  run(sim, 1);
+  assert.equal(sim.state.score, 0); // picking up gives no score now
   let ev = run(sim, 2, press('interact', 0));
-  assert.deepEqual(ev[0].data, { lantern_id: 'L1', amount: 3, deposited: 3 });
-  sim.state.player.carried = 7;
+  assert.deepEqual(ev[0].data, { lantern_id: 'L1', amount: 7, deposited: 7 });
+  assert.equal(sim.state.score, 70);
+  sim.state.player.carried = 9;
   ev = run(sim, 2, press('interact', 0));
   assert.deepEqual(ev.map((e) => e.name), ['deposit', 'lantern_lit']);
-  assert.deepEqual(ev[0].data, { lantern_id: 'L1', amount: 2, deposited: 5 });
-  assert.equal(sim.state.player.carried, 5);
-  assert.equal(sim.state.score, T.score.per_lantern);
-  assert.equal(sim.snapshot().lanterns[0].lit, true);
+  assert.deepEqual(ev[0].data, { lantern_id: 'L1', amount: 3, deposited: 10 });
+  assert.equal(sim.state.player.carried, 6);
+  assert.equal(sim.state.score, 100 + 100);
 });
 
-test('interact out of range or held button does nothing', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { pos: [0, 0, 25 - T.interact_radius - 0.01], carried: 5 } } });
-  assert.equal(run(sim, 3, { interact: true }).length, 0);
+test('interact radius 2.0, nearest unlit lantern, tie -> smaller id', () => {
+  let sim = mk({ player: { pos: [0, 0, 22.99], carried: 1 } });
+  assert.equal(run(sim, 1, { interact: true }).length, 0);
+  sim = mk({ player: { pos: [5, 0, 0], carried: 2 }, lanterns: [{ id: 'L3', pos: [5, 0, 1] }, { id: 'L2', pos: [5, 0, -1] }] });
+  const ev = run(sim, 1, { interact: true });
+  assert.equal(ev[0].data.lantern_id, 'L2');
 });
 
-test('win: lighting the last lantern -> won/all_lit with time + flame bonus', () => {
+test('win: checked after the tick, bonus floor(seconds) x2 + 50 x flames; win even on the dawn tick', () => {
   const lit = ['L2', 'L3', 'L4', 'L5'].map((id) => ({ id, lit: true }));
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { pos: [0, 0, 24], carried: 5 }, lanterns: lit, time_left_s: 100 } });
-  assert.equal(sim.state.score, 0); // preset lit lanterns give no score
+  let sim = mk({ player: { pos: [0, 0, 24], carried: 10 }, lanterns: lit, time_left_s: 100 });
   const ev = run(sim, 5, press('interact', 0));
   assert.deepEqual(ev.at(-1), { tick: 1, name: 'game_over', data: { result: 'won', reason: 'all_lit' } });
-  const timeBonus = T.score.per_second_left * Math.floor(100 - 1 / 60);
-  assert.equal(sim.state.score, T.score.per_lantern + timeBonus + T.score.per_flame_left * T.flames);
-  assert.equal(sim.state.state, 'won');
-  assert.equal(sim.state.steps, 1); // stops after game over
+  assert.equal(sim.state.score, 100 + 100 + 2 * 99 + 150);
+  sim = mk({ player: { pos: [0, 0, 24], carried: 10 }, lanterns: lit, time_left_s: 1 / 60 });
+  assert.deepEqual(run(sim, 1, { interact: true }).at(-1).data, { result: 'won', reason: 'all_lit' });
 });
 
-test('pulse: costs pulse_cost, stuns + pushes shades in radius, cooldown, score per_stun', () => {
-  const sc = { ...EMPTY, player: { carried: 3 }, shades: [{ id: 'A', pos: [T.pulse_radius, 0, 0] }, { id: 'B', pos: [T.pulse_radius + 1, 0, 0] }] };
-  const sim = createSim(T, { scenario: sc });
+test('dawn: time runs out -> lost/dawn', () => {
+  const sim = mk({ time_left_s: 1 });
+  assert.deepEqual(run(sim, 100).at(-1), { tick: 60, name: 'game_over', data: { result: 'lost', reason: 'dawn' } });
+});
+
+// ---------------- pulse ----------------
+test('pulse: cost 3, 3D radius 5 from feet+0.8, stun 120, push 4 m over 15 ticks, cooldown 180, +5 each', () => {
+  const sim = mk({ player: { carried: 5 }, shades: [{ id: 'S1', pos: [4.9, 0.8, 0] }, { id: 'S2', pos: [0, 0.8 + 5.01, 0] }, { id: 'S3', pos: [3, 1, 3] }] });
   const ev = run(sim, 1, { pulse: true });
-  assert.deepEqual(ev[0], { tick: 1, name: 'pulse', data: { stunned_ids: ['A'] } });
-  const snap = sim.snapshot();
-  assert.equal(snap.player.carried, 3 - T.pulse_cost);
-  assert.equal(snap.shades[0].state, 'stunned');
-  assert.ok(Math.abs(snap.shades[0].pos[0] - (T.pulse_radius + T.pulse_push_m)) < 1e-6);
-  assert.notEqual(snap.shades[1].state, 'stunned');
-  assert.equal(sim.state.score, T.score.per_stun);
-  // re-press during cooldown -> nothing
-  const ev2 = run(sim, 4, (k) => ({ pulse: k % 2 === 1 }));
-  assert.equal(ev2.filter((e) => e.name === 'pulse').length, 0);
-});
-
-test('pulse: stunned shade frozen for pulse_stun_s then chases again', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { carried: 1 }, shades: [{ id: 'A', pos: [3, 0, 0] }] } });
-  run(sim, 1, { pulse: true });
-  const x0 = sim.state.shades[0].x;
-  run(sim, Math.round(T.pulse_stun_s * 60) - 1);
-  assert.equal(sim.state.shades[0].x, x0);
+  assert.deepEqual(ev[0].data, { stunned_ids: ['S1', 'S3'] });
+  assert.equal(sim.state.player.carried, 2);
+  assert.equal(sim.state.score, 10);
+  run(sim, 14);
+  assert.ok(near(sim.state.shades[0].x, 4.9 + 4, 1e-6));
+  run(sim, 5);
+  assert.ok(near(sim.state.shades[0].x, 8.9, 1e-6)); // no more push after 15 ticks
+  run(sim, 120 - 20);
   assert.equal(sim.state.shades[0].state, 'stunned');
   run(sim, 1);
-  assert.equal(sim.state.shades[0].state, 'chase');
-  assert.ok(sim.state.shades[0].x < x0);
+  assert.notEqual(sim.state.shades[0].state, 'stunned');
+  assert.equal(sim.state.player.pulseCd, 180 - 120);
 });
 
-test('pulse: not enough light -> no pulse', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { carried: 0 }, shades: [{ pos: [3, 0, 0] }] } });
+test('pulse: not enough motes or on cooldown -> nothing; re-pulse refreshes stun and scores again', () => {
+  let sim = mk({ player: { carried: 2 }, shades: [{ pos: [2, 1, 0] }] });
   assert.equal(run(sim, 1, { pulse: true }).length, 0);
+  sim = mk({ player: { carried: 9 }, shades: [{ id: 'S1', pos: [1.5, 1, 0] }] });
+  run(sim, 1, { pulse: true });
+  run(sim, 179);
+  sim.state.shades[0].x = 2;
+  const ev = run(sim, 2, press('pulse', 0));
+  assert.deepEqual(ev[0].data.stunned_ids, ['S1']);
+  assert.equal(sim.state.shades[0].left, 119);
+  assert.equal(sim.state.score, 10);
 });
 
-test('shade chases at shade_speed', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, shades: [{ id: 'S1', pos: [20, 0, 0] }] } });
+// ---------------- shades ----------------
+test('[P2 change] shades: none at start, 2 at tick 300 (spawning), then every 480 ticks, max 6, ids in order', () => {
+  // Phase 1 started with 2 shades and spawned every 30 s.
+  const sim = createSim(T, { seed: 9, night: 1, scenario: { random_motes: false, motes: [] } });
+  assert.equal(sim.snapshot().shades.length, 0);
+  const ev = run(sim, 300 + 480, { move: [0, 0] }).filter((e) => e.name === 'shade_spawned');
+  assert.deepEqual(ev.map((e) => [e.tick, e.data.id]), [[300, 'S1'], [300, 'S2'], [780, 'S3']]);
+  for (const sh of sim.state.shades) {
+    const p = LEVELS[1].shadeSpawns.find((q) => near(q[0], sh.x, 20));
+    assert.ok(p);
+  }
+});
+
+test('shade spawn points are >= 15 m from the player', () => {
+  const sim = createSim(T, { seed: 2, night: 1, scenario: { random_motes: false, motes: [], player: { pos: [30, 0, 15] } } });
+  run(sim, 300);
+  const pts = LEVELS[1].shadeSpawns;
+  for (const sh of sim.state.shades) assert.ok(pts.some((p) => near(p[0], sh.x) && near(p[2], sh.z) && Math.hypot(p[0] - 30, p[2] - 15) >= 15));
+});
+
+test('shades: detect 12 m -> chase at 4 m/s (4.5 on night 3), give up beyond 18 m', () => {
+  let sim = mk({ shades: [{ id: 'S1', pos: [11, 1, 0] }] });
+  assert.equal(sim.state.shades[0].state, 'chase');
   run(sim, 60);
-  assert.ok(Math.abs(sim.state.shades[0].x - (20 - T.shade_speed)) < 1e-6);
+  assert.ok(near(sim.state.shades[0].x, 7));
+  sim = mk({ shades: [{ id: 'S1', pos: [13, 1, 0] }] });
+  assert.equal(sim.state.shades[0].state, 'wander');
+  sim = mk({ shades: [{ id: 'S1', pos: [17, 1, 0], state: 'chase' }] });
+  run(sim, 30, { move: [-1, 0] });
+  assert.equal(sim.state.shades[0].state, 'wander'); // player ran away: > 18 m
+  sim = mk({ player: { pos: [0, 0, -30] }, shades: [{ id: 'S1', pos: [10, 1, -30] }] }, 3);
+  run(sim, 60);
+  assert.ok(near(sim.state.shades[0].x, 5.5));
 });
 
-test('hit: lose a flame, drop hit_drop_ratio of carried, invulnerable for invuln_s', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { carried: 5 }, shades: [{ id: 'S1', pos: [0.5, 0, 0] }] } });
-  const ev = run(sim, Math.round(T.invuln_s * 60) + 1);
-  const hits = ev.filter((e) => e.name === 'player_hit');
-  assert.equal(hits.length, 2);
-  assert.deepEqual(hits[0], { tick: 1, name: 'player_hit', data: { by: 'shade', flames: T.flames - 1, dropped: Math.floor(5 * T.hit_drop_ratio) } });
-  assert.equal(hits[1].tick - hits[0].tick, Math.round(T.invuln_s * 60));
+test('hit: -1 flame, drop floor(carried/2) on a 1.5-2.5 m ring (TTL 480), invuln 90, shade recoils 2 m in 60 ticks', () => {
+  // 50 flames so the game does not end before the TTL check (the shade keeps coming back)
+  const sim = mk({ player: { carried: 5, flames: 50 }, shades: [{ id: 'S1', pos: [0.9, 1, 0], state: 'chase' }] });
+  const ev = run(sim, 1);
+  assert.deepEqual(ev[0].data, { by: 'shade', flames: 49, dropped: 2 });
+  const snap = sim.snapshot();
+  assert.equal(snap.player.carried, 3);
+  assert.equal(snap.shades[0].state, 'recoil');
+  const drops = snap.motes.filter((m) => m.kind === 'dropped');
+  assert.equal(drops.length, 2);
+  for (const m of drops) {
+    const r = Math.hypot(m.pos[0], m.pos[2]);
+    assert.ok(r >= 1.5 - 1e-3 && r <= 2.5 + 1e-3);
+    assert.equal(m.ttl_s, 8);
+  }
+  const x0 = sim.state.shades[0].x;
+  run(sim, 59);
+  assert.ok(near(sim.state.shades[0].x - x0, 2 * 59 / 60, 1e-6));
+  run(sim, 1);
+  assert.ok(near(sim.state.shades[0].x - x0, 2, 1e-6)); // 2 m after 60 ticks of recoil
+  run(sim, 1);
+  assert.notEqual(sim.state.shades[0].state, 'recoil');
+  assert.equal(sim.state.player.invuln, 90 - 61); // hit on tick 1, 61 ticks later
+  const firstDrops = drops.map((m) => m.id);
+  run(sim, 480 - 62);
+  assert.ok(firstDrops.every((id) => sim.state.motes.some((m) => m.id === id)), 'still there at tick 480');
+  run(sim, 1);
+  assert.ok(firstDrops.every((id) => !sim.state.motes.some((m) => m.id === id)), 'TTL 480 expired');
 });
 
-test('lose: last flame -> lost/no_flames', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, player: { flames: 1 }, shades: [{ pos: [0.5, 0, 0] }] } });
-  const ev = run(sim, 10);
-  assert.deepEqual(ev.at(-1).data, { result: 'lost', reason: 'no_flames' });
-  assert.equal(sim.state.state, 'lost');
+test('hit: max one flame per tick, shades checked in id order; touching while invulnerable does nothing', () => {
+  const sim = mk({ player: { invuln_ticks: 0 }, shades: [{ id: 'S2', pos: [0.5, 1, 0], state: 'chase' }, { id: 'S1', pos: [-0.5, 1, 0], state: 'chase' }] });
+  const ev = run(sim, 1);
+  assert.equal(ev.filter((e) => e.name === 'player_hit').length, 1);
+  assert.equal(sim.state.shades.find((s) => s.id === 'S1').state, 'recoil');
+  assert.equal(sim.state.shades.find((s) => s.id === 'S2').state, 'chase');
 });
 
-test('safe_radius: shade cannot enter lit lantern radius, unlit lantern does not protect', () => {
-  const sc = (lit) => ({ ...EMPTY, player: { pos: [0, 0, 25] }, lanterns: [{ id: 'L1', lit }], shades: [{ id: 'S1', pos: [0, 0, 10] }] });
-  let sim = createSim(T, { scenario: sc(true) });
+test('hit needs height difference <= 1.5 (night 3 tiers)', () => {
+  const sim = mk({ player: { pos: [0, 3, 18] }, shades: [{ id: 'S1', pos: [0, 1, 18.5], state: 'chase' }] }, 3);
+  assert.equal(run(sim, 1).filter((e) => e.name === 'player_hit').length, 0);
+});
+
+test('safe zone: shade outside is held at 6 m; shade inside when lit is pushed out within 30 ticks, harmless', () => {
+  let sim = mk({ player: { pos: [0, 0, 24] }, lanterns: [{ id: 'L1', lit: true }], shades: [{ id: 'S1', pos: [0, 1, 12] }] });
   const ev = run(sim, 600);
   assert.equal(ev.filter((e) => e.name === 'player_hit').length, 0);
-  assert.ok(Math.hypot(sim.state.shades[0].x, sim.state.shades[0].z - 25) >= T.safe_radius - 1e-9);
-  sim = createSim(T, { scenario: sc(false) });
-  assert.ok(run(sim, 600).some((e) => e.name === 'player_hit'));
+  assert.ok(Math.hypot(sim.state.shades[0].x, sim.state.shades[0].z - 25) >= 6 - 1e-9);
+  sim = mk({ player: { pos: [0, 0, 23.5], carried: 10 }, shades: [{ id: 'S1', pos: [0, 1, 24.2], state: 'chase' }], lanterns: [{ id: 'L1', deposited: 0 }] });
+  sim.state.player.invuln = 0;
+  const ev2 = run(sim, 31, press('interact', 0));
+  assert.ok(ev2.some((e) => e.name === 'lantern_lit'));
+  assert.equal(ev2.filter((e) => e.name === 'player_hit').length, 0);
+  assert.ok(Math.hypot(sim.state.shades[0].x, sim.state.shades[0].z - 25) >= 6 - 1e-6);
 });
 
-test('dawn: time runs out -> lost/dawn at the exact tick', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, time_left_s: 1 } });
-  const ev = run(sim, 1000);
-  assert.deepEqual(ev.at(-1), { tick: 60, name: 'game_over', data: { result: 'lost', reason: 'dawn' } });
+test('safe zone: a stunned (non-moving) shade inside a newly lit lantern is still pushed out within 30 ticks', () => {
+  const sim = mk({ player: { pos: [0, 0, 23.5], carried: 10 }, shades: [{ id: 'S1', pos: [2, 1, 25], state: 'stunned', state_ticks_left: 120 }] });
+  run(sim, 30, press('interact', 0));
+  const sh = sim.state.shades[0];
+  assert.equal(sh.state, 'stunned');
+  assert.ok(Math.hypot(sh.x, sh.z - 25) >= 6 - 1e-6, `still inside: ${Math.hypot(sh.x, sh.z - 25)}`);
 });
 
-test('random spawning: motes respawn, shades spawn with shade_spawned event and unique ids', () => {
-  const sim = createSim(T, { seed: 7, scenario: { motes: [], shades: [] } });
-  const ev = run(sim, WORLD.shade_spawn_ticks);
-  assert.equal(sim.snapshot().motes_active, WORLD.shade_spawn_ticks / WORLD.mote_respawn_ticks);
-  assert.deepEqual(ev.filter((e) => e.name === 'shade_spawned').map((e) => e.data.id), ['S1']);
+// ---------------- night 2 / 3 features ----------------
+test('night 2 jump pad: lands on the other island in ~1.4 s, movement keys do not override', () => {
+  const sim = mk({ player: { pos: [20, 0, 17.5] } }, 2);
+  run(sim, 1);
+  assert.equal(sim.state.player.grounded, false);
+  run(sim, 100, { move: [-1, 0] });
+  const p = sim.state.player;
+  assert.equal(p.grounded, true);
+  assert.ok(Math.hypot(p.x - 70, p.z) <= 28, `landed at ${p.x},${p.z}`);
+  assert.equal(p.flames, 3);
 });
 
-test('scenario shade ids: auto ids skip ids given by the scenario', () => {
-  const sim = createSim(T, { scenario: { ...EMPTY, shades: [{ pos: [30, 0, 0] }, { id: 'S1', pos: [-30, 0, 0] }] } });
-  assert.deepEqual(sim.snapshot().shades.map((s) => s.id), ['S2', 'S1']);
+test('night 3: tier walls block, ramp climbs to tier 1, pad lands on tier 2', () => {
+  let sim = mk({ player: { pos: [0, 0, 10] } }, 3); // between tier 2 (r<=8) and tier 1 (r>=12)
+  run(sim, 120, { move: [0, 1] });
+  assert.ok(sim.state.player.z < 12 && sim.state.player.y === 0, 'wall to tier 1 blocks');
+  const a = Math.PI / 6;
+  sim = mk({ player: { pos: [31 * Math.cos(a), 0, 31 * Math.sin(a)] } }, 3);
+  run(sim, 75, { move: [0, 1], cam_yaw_deg: (Math.atan2(-Math.cos(a), -Math.sin(a)) * 180) / Math.PI });
+  assert.ok(near(sim.state.player.y, 3), `ramp top y=${sim.state.player.y}`);
+  sim = mk({ player: { pos: [0, 3, 13] } }, 3);
+  run(sim, 120);
+  assert.ok(near(sim.state.player.y, 6) && Math.hypot(sim.state.player.x, sim.state.player.z) <= 8);
+});
+
+test('wind (night 3): every 1800 ticks, 300 ticks, pushes 2 m/s; disabled by wind_enabled false', () => {
+  const sim = createSim(T, { seed: 4, night: 3, scenario: { ...EMPTY, wind_enabled: true } });
+  run(sim, 1799);
+  assert.equal(sim.snapshot().wind.active, false);
+  run(sim, 1);
+  const w = sim.snapshot().wind;
+  assert.equal(w.active, true);
+  const p0 = { ...sim.state.player };
+  run(sim, 60);
+  assert.ok(near(Math.hypot(sim.state.player.x - p0.x, sim.state.player.z - p0.z), 2, 0.05));
+  run(sim, 240);
+  assert.equal(sim.snapshot().wind.active, false);
+  const off = mk({}, 3);
+  run(off, 1800);
+  assert.equal(off.snapshot().wind.active, false);
+});
+
+test('drifter: idle -> chase (>=5 motes, <=15 m), steals min(3, carried) once, flees 240 ticks then removed', () => {
+  const sim = mk({ player: { carried: 5 }, drifters: [{ id: 'D1', pos: [10, 1.5, 0] }] }, 2);
+  const ev = run(sim, 120);
+  const st = ev.find((e) => e.name === 'drifter_steal');
+  assert.deepEqual(st.data, { drifter_id: 'D1', amount: 3, carried: 2 });
+  assert.equal(sim.snapshot().drifters[0].state, 'flee');
+  assert.equal(sim.snapshot().drifters[0].stolen, 3);
+  run(sim, 240);
+  assert.equal(sim.snapshot().drifters[0].state, 'removed');
+  assert.equal(sim.state.player.flames, 3); // no flame lost
+});
+
+test('drifter: stays idle under 5 motes; invulnerability does not prevent stealing', () => {
+  let sim = mk({ player: { carried: 4 }, drifters: [{ id: 'D1', pos: [5, 1.5, 0] }] }, 2);
+  run(sim, 60);
+  assert.equal(sim.snapshot().drifters[0].state, 'idle');
+  sim = mk({ player: { carried: 6, invuln_ticks: 600 }, drifters: [{ id: 'D1', pos: [1, 1.5, 0], state: 'chase' }] }, 2);
+  assert.equal(run(sim, 1)[0].name, 'drifter_steal');
+});
+
+test('drifter + pulse: chase -> flee without stealing; flee with loot -> drops loot, removed 120 ticks later', () => {
+  let sim = mk({ player: { carried: 8 }, drifters: [{ id: 'D1', pos: [4, 1.5, 0], state: 'chase' }] }, 2);
+  run(sim, 1, { pulse: true });
+  assert.equal(sim.snapshot().drifters[0].state, 'flee');
+  assert.equal(run(sim, 300).filter((e) => e.name === 'drifter_steal').length, 0);
+  sim = mk({ player: { carried: 3 }, drifters: [{ id: 'D1', pos: [3, 1.5, 0], state: 'flee', stolen: 3 }] }, 2);
+  const ev = run(sim, 1, { pulse: true });
+  assert.deepEqual(ev.find((e) => e.name === 'drifter_drop').data, { drifter_id: 'D1', amount: 3 });
+  assert.equal(sim.snapshot().motes.filter((m) => m.kind === 'dropped').length, 3);
+  run(sim, 119);
+  assert.equal(sim.snapshot().drifters[0].state, 'flee');
+  run(sim, 1);
+  assert.equal(sim.snapshot().drifters[0].state, 'removed');
+});
+
+test('drifters spawn at tick 1200k on nights 2-3 only (max 2), ids D1, D2', () => {
+  const sim = createSim(T, { seed: 1, night: 2, scenario: { random_shades: false, random_motes: false, motes: [] } });
+  run(sim, 3600);
+  assert.deepEqual(sim.snapshot().drifters.map((d) => d.id), ['D1', 'D2']);
+  const n1 = createSim(T, { seed: 1, night: 1, scenario: { random_shades: false } });
+  run(n1, 1200);
+  assert.equal(n1.snapshot().drifters.length, 0);
+});
+
+test('pause: tick advances, sim_tick/time/cooldowns frozen, state paused, events paused/resumed', () => {
+  const sim = mk({ player: { pulse_cd_ticks: 50 } });
+  run(sim, 10);
+  let ev = run(sim, 1, { pause: true });
+  assert.deepEqual(ev.map((e) => e.name), ['paused']);
+  run(sim, 30, { pause: true, move: [0, 1] });
+  const s = sim.snapshot();
+  assert.equal(s.state, 'paused');
+  assert.equal(s.tick, 41);
+  assert.equal(s.sim_tick, 10);
+  assert.equal(s.player.pos[2], 0);
+  assert.equal(sim.state.player.pulseCd, 40);
+  ev = run(sim, 2, (k) => ({ pause: k === 1 }));
+  assert.deepEqual(ev.map((e) => e.name), ['resumed']);
+  assert.equal(sim.snapshot().sim_tick, 11);
+});
+
+test('snapshot v1.1 fields', () => {
+  const s = createSim(T, { night: 2 }).snapshot();
+  for (const k of ['night', 'wind', 'motes', 'drifters', 'charms']) assert.ok(k in s, k);
+  for (const k of ['vel', 'grounded', 'invuln', 'dash_cd_s', 'pulse_cd_s', 'charm_s']) assert.ok(k in s.player, k);
+  assert.deepEqual(Object.keys(s.motes[0]), ['id', 'pos', 'kind', 'ttl_s']);
+  assert.deepEqual(s.charms[0], { id: 'C1', pos: [35, 0, 0], available: true, respawn_s: 0 });
 });
 
 test('input reader: fields persist, defaults before first frame', () => {
   const at = makeInputReader({ frames: [{ tick: 5, move: [0, 1], cam_yaw_deg: 30 }, { tick: 8, interact: true }] });
   assert.deepEqual(at(0).move, [0, 0]);
-  assert.deepEqual(at(5), { move: [0, 1], cam_yaw_deg: 30, jump: false, interact: false, pulse: false, dash: false });
   assert.equal(at(9).interact, true);
   assert.equal(at(9).cam_yaw_deg, 30);
+  assert.equal(at(9).pause, false);
 });

@@ -9,7 +9,7 @@
       "cam_yaw_deg": 0
     },
     {
-      "tick": 230,
+      "tick": 235,
       "move": [
         0,
         0
@@ -17,7 +17,7 @@
       "interact": true
     },
     {
-      "tick": 231,
+      "tick": 236,
       "interact": false,
       "move": [
         0,
@@ -25,15 +25,15 @@
       ]
     },
     {
-      "tick": 461,
+      "tick": 471,
       "move": [
         0,
         1
       ],
-      "cam_yaw_deg": 72
+      "cam_yaw_deg": 72.0721
     },
     {
-      "tick": 691,
+      "tick": 706,
       "move": [
         0,
         0
@@ -41,7 +41,7 @@
       "interact": true
     },
     {
-      "tick": 692,
+      "tick": 707,
       "interact": false,
       "move": [
         0,
@@ -49,15 +49,15 @@
       ]
     },
     {
-      "tick": 922,
+      "tick": 942,
       "move": [
         0,
         1
       ],
-      "cam_yaw_deg": 144
+      "cam_yaw_deg": 143.9558
     },
     {
-      "tick": 1152,
+      "tick": 1177,
       "move": [
         0,
         0
@@ -65,7 +65,7 @@
       "interact": true
     },
     {
-      "tick": 1153,
+      "tick": 1178,
       "interact": false,
       "move": [
         0,
@@ -73,15 +73,15 @@
       ]
     },
     {
-      "tick": 1383,
+      "tick": 1413,
       "move": [
         0,
         1
       ],
-      "cam_yaw_deg": 216
+      "cam_yaw_deg": -143.9558
     },
     {
-      "tick": 1613,
+      "tick": 1648,
       "move": [
         0,
         0
@@ -89,7 +89,7 @@
       "interact": true
     },
     {
-      "tick": 1614,
+      "tick": 1649,
       "interact": false,
       "move": [
         0,
@@ -97,15 +97,15 @@
       ]
     },
     {
-      "tick": 1844,
+      "tick": 1884,
       "move": [
         0,
         1
       ],
-      "cam_yaw_deg": 288
+      "cam_yaw_deg": -72.0721
     },
     {
-      "tick": 2074,
+      "tick": 2119,
       "move": [
         0,
         0
@@ -113,7 +113,7 @@
       "interact": true
     },
     {
-      "tick": 2075,
+      "tick": 2120,
       "interact": false,
       "move": [
         0,
@@ -121,7 +121,7 @@
       ]
     },
     {
-      "tick": 2305,
+      "tick": 2355,
       "move": [
         0,
         0
