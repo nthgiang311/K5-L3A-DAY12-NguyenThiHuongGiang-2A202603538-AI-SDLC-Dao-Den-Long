@@ -259,7 +259,7 @@ test('refuel: used = min(carried, ceil((100 - fuel)/10)), +10 fuel and +5 score 
   ev = run(sim, 2, press('interact', 1)); // release, then press again (edge-triggered)
   assert.deepEqual(ev[0].data, { lantern_id: 'L1', amount: 1, fuel: 100 });
   // A lantern is never exactly full at interact time: decay (step 2) runs before interact (step 5),
-  // so "used = 0" only happens with carried = 0 (no interact at all). See docs/adr/0001-lantern-fuel.md.
+  // so "used = 0" only happens with carried = 0 (no interact at all). See docs/adr/0001-lantern-fuel-and-dawn-win.md.
   const sim2 = mk({ player: { pos: [0, 0, 24], carried: 0 }, lanterns: [{ id: 'L1', lit: true }] });
   assert.equal(run(sim2, 1, { interact: true }).length, 0);
 });

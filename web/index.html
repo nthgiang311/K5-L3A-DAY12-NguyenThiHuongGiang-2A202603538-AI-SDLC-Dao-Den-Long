@@ -10,11 +10,13 @@
     #flames { top: 14px; left: 16px; font-size: 26px; }
     #clock { top: 10px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 700; letter-spacing: 1px; }
     #clock.danger { color: var(--danger); animation: blink 0.6s steps(2) infinite; }
+    body.cb { --danger: #FFFFFF; }
+    body.cb #clock.danger::before { content: '⚠ '; }
     @keyframes blink { 50% { opacity: 0.25; } }
     #topright { top: 12px; right: 16px; text-align: right; line-height: 1.5; }
     #topright b { color: var(--gold); font-size: 20px; }
     #bar { bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; }
-    #bar i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #FFE58A; background: transparent; display: block; }
+    #bar i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #FFE58A; background: transparent; display: block; }
     #bar i.on { background: radial-gradient(#FFF6C2, #FFE58A); box-shadow: 0 0 10px #FFE58A; }
     #cds { bottom: 16px; right: 18px; display: flex; gap: 10px; }
     .cd { width: 54px; height: 54px; border-radius: 10px; background: var(--panel); border: 2px solid var(--gold); position: relative; overflow: hidden; text-align: center; font-size: 12px; }
@@ -67,6 +69,7 @@
     <h1>Cài đặt</h1>
     <label>Âm lượng <input type="range" id="set-vol" min="0" max="1" step="0.05" /></label>
     <label>Độ nhạy chuột <input type="range" id="set-sens" min="0.05" max="1" step="0.05" /></label>
+    <label><input type="checkbox" id="set-cb" /> Bảng màu dễ phân biệt (mù màu)</label>
     <button data-act="back">Xong</button>
   </div>
   <script type="module" src="/web/main.js"></script>
