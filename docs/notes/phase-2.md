@@ -62,3 +62,7 @@ Test Phase 1 bị đổi: đánh dấu `[P2 change]` trong `tests/*.test.js` kè
 - **Không làm hỏng Phase 1?** Các yêu cầu Phase 1 chạy lại với số chuẩn đều đạt; những test đổi kỳ vọng là do ticket đổi luật (bảng trên).
 - **AI sai:** viết 5 kỳ vọng test lệch 1 tick (bộ đếm giảm từ tick sau), 1 lỗi thật trong code (bộ đếm flee của Gió Lạc giảm ngay trong tick đặt nó → biến mất sớm 1 tick; recoil chỉ 59 tick), kịch bản test để Mây chết trước khi kiểm TTL, scenario pulse/charm đặt sai thời điểm/vị trí.
   Phát hiện nhờ test đỏ và proof báo CHƯA ĐẠT. Bài học thêm vào AGENTS.md.
+
+## Chơi thử thủ công (sau khi gắn tag phase-2, cùng mã)
+- 2026-11-20, người chơi (chủ repo) chạy `node server.js` trên Windows, trình duyệt Chrome: **FPS hiển thị 60**, có nhạc nền, menu và game chạy bình thường.
+- Đây là bằng chứng thủ công cho các mục "thủ công" ở bảng trên (≥ 30 FPS, âm thanh, chuỗi màn hình). Chưa đo chính xác ở đúng 1280×720 và chưa thử hết Đêm 2–3.
