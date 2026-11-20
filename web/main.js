@@ -6,6 +6,9 @@ import { LEVELS, TOWER } from '/src/sim/levels.js';
 import { sfx, setVolume, unlock, startMusic, stopMusic } from '/web/audio.js';
 
 const tuning = (await (await fetch('/game.contract.json')).json()).tuning;
+import { mulberry32 } from '/src/sim/rng.js';
+const Q = new URLSearchParams(location.search);
+const BENCH = Q.has('bench') ? { seed: parseInt(Q.get('seed') || '42', 10), duration: parseFloat(Q.get('duration') || '30') } : null;
 
 // ---------- standard palette (Ticket-02) ----------
 const C = {
@@ -20,7 +23,10 @@ const INTRO = {
 };
 
 // ---------- settings (persisted) ----------
-const settings = Object.assign({ vol: 0.6, sens: 0.3, cb: false }, JSON.parse(localStorage.getItem('ddl-settings') || '{}'));
+const DEFAULT_KEYS = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', dash: 'ShiftLeft', interact: 'KeyE', pulse: 'KeyF', pause: 'Escape' };
+const KEY_LABEL = { up: 'Đi lên', down: 'Đi xuống', left: 'Sang trái', right: 'Sang phải', jump: 'Nhảy', dash: 'Lướt', interact: 'Tương tác', pulse: 'Tỏa sáng', pause: 'Tạm dừng' };
+const settings = Object.assign({ vol: 0.6, sens: 0.3, cb: false, rm: false, big: false }, JSON.parse(localStorage.getItem('ddl-settings') || '{}'));
+settings.keys = Object.assign({}, DEFAULT_KEYS, settings.keys || {});
 const saveSettings = () => localStorage.setItem('ddl-settings', JSON.stringify(settings));
 setVolume(settings.vol);
 const $ = (id) => document.getElementById(id);
@@ -36,17 +42,43 @@ const applyCb = () => {
   eyeMat.color.setHex(settings.cb ? 0x00b3ff : 0xffffff);
 };
 $('set-cb').onchange = (e) => { settings.cb = e.target.checked; saveSettings(); applyCb(); };
+$('set-rm').checked = settings.rm;
+$('set-rm').onchange = (e) => { settings.rm = e.target.checked; saveSettings(); };
+$('set-big').checked = settings.big;
+document.body.classList.toggle('big', settings.big);
+$('set-big').onchange = (e) => { settings.big = e.target.checked; document.body.classList.toggle('big', settings.big); saveSettings(); };
+// ----- key rebinding: click an action, press a key; duplicates are reported -----
+let rebinding = null;
+const keyName = (code) => code.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Shift trái').replace('ShiftRight', 'Shift phải').replace('Space', 'Space');
+function renderBinds() {
+  const box = $('binds');
+  box.innerHTML = '';
+  for (const act of Object.keys(DEFAULT_KEYS)) {
+    const lab = document.createElement('span');
+    lab.textContent = KEY_LABEL[act];
+    const b = document.createElement('button');
+    b.textContent = rebinding === act ? 'Nhấn phím…' : keyName(settings.keys[act]);
+    b.onclick = () => { rebinding = act; renderBinds(); };
+    box.append(lab, b);
+  }
+  const used = {};
+  for (const [a, k] of Object.entries(settings.keys)) (used[k] = used[k] || []).push(KEY_LABEL[a]);
+  const dup = Object.entries(used).filter(([, v]) => v.length > 1);
+  $('bind-warn').textContent = dup.length ? '⚠ Trùng phím: ' + dup.map(([k, v]) => `${keyName(k)} (${v.join(', ')})`).join('; ') : '';
+}
+renderBinds();
 
 // ---------- renderer / scene ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-renderer.setSize(innerWidth, innerHeight);
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(BENCH ? 1 : Math.min(devicePixelRatio, 1.5));
+renderer.setSize(BENCH ? 1280 : innerWidth, BENCH ? 720 : innerHeight);
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(C.sky);
 scene.fog = new THREE.FogExp2(C.fog, 0.03);
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(60, BENCH ? 1280 / 720 : innerWidth / innerHeight, 0.1, 400);
 addEventListener('resize', () => {
+  if (BENCH) return;
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -55,12 +87,13 @@ const ambient = new THREE.AmbientLight(0xfff0e0, 0.15);
 const moon = new THREE.DirectionalLight(0x8090ff, 0.4);
 moon.position.set(-30, 60, -20);
 scene.add(ambient, moon);
-const sea = new THREE.Mesh(new THREE.CircleGeometry(400, 48), new THREE.MeshStandardMaterial({ color: C.sea, roughness: 1 }));
+const sea = new THREE.Mesh(new THREE.CircleGeometry(400, 48), new THREE.MeshLambertMaterial({ color: C.sea }));
 sea.rotation.x = -Math.PI / 2;
 sea.position.y = -12;
 scene.add(sea);
 
-const mat = (color, emissive = 0, ei = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, roughness: 0.85, ...extra });
+// Lambert shading: cheaper than PBR for many lights, fits the simple stylised look
+const mat = (color, emissive = 0, ei = 0, extra = {}) => new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: ei, ...extra });
 
 // ---------- level geometry ----------
 let levelGroup = null;
@@ -201,22 +234,36 @@ function makeCharm() {
   g.add(border, card);
   return g;
 }
+// Shades and motes are drawn with InstancedMesh (a handful of draw calls even with 200 shades in the bench)
+const MAX_SHADES = 256, MAX_MOTES = 160;
+const shadeBodyI = new THREE.InstancedMesh(shadeGeo, mat(0xffffff), MAX_SHADES);
+const shadeRimI = new THREE.InstancedMesh(shadeGeo, rimMat, MAX_SHADES);
+const eyeGeo = new THREE.SphereGeometry(0.09, 8, 6);
+const eyeI = new THREE.InstancedMesh(eyeGeo, eyeMat, MAX_SHADES * 2);
 const moteGeo = new THREE.SphereGeometry(0.13, 8, 6), haloGeo = new THREE.SphereGeometry(0.3, 8, 6);
 const moteMat = mat(C.moteCore, C.moteCore, 2.5);
 const haloMat = new THREE.MeshBasicMaterial({ color: C.moteHalo, transparent: true, opacity: 0.3 });
-function makeMote() {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(moteGeo, moteMat), new THREE.Mesh(haloGeo, haloMat));
-  return g;
-}
+const moteI = new THREE.InstancedMesh(moteGeo, moteMat, MAX_MOTES);
+const haloI = new THREE.InstancedMesh(haloGeo, haloMat, MAX_MOTES);
+for (const m of [shadeBodyI, shadeRimI, eyeI, moteI, haloI]) { m.count = 0; m.frustumCulled = false; scene.add(m); }
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler(), _c = new THREE.Color();
+const _off = new THREE.Vector3();
 
 // ---------- input ----------
 const keys = new Set();
 addEventListener('keydown', (e) => {
   unlock();
+  if (rebinding) {
+    e.preventDefault();
+    settings.keys[rebinding] = e.code;
+    rebinding = null;
+    saveSettings();
+    renderBinds();
+    return;
+  }
   keys.add(e.code);
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-  if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
+  if ((e.code === settings.keys.pause || e.code === 'KeyP') && !e.repeat) {
     if (mode === 'play') setMode('paused');
     else if (mode === 'paused') setMode('play');
   }
@@ -231,17 +278,18 @@ function readInput() {
   if (keys.has('ArrowLeft')) camYaw += 1.5;
   if (keys.has('ArrowRight')) camYaw -= 1.5;
   // screen-right is world (-cos, +sin) of the yaw => contract x = -1
-  const x = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0);
-  const z = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
-  return { move: [x, z], cam_yaw_deg: camYaw, jump: keys.has('Space'), interact: keys.has('KeyE'), pulse: keys.has('KeyF'),
-    dash: keys.has('ShiftLeft') || keys.has('ShiftRight') };
+  const K = settings.keys, on = (a) => keys.has(K[a]);
+  const x = (on('left') ? 1 : 0) - (on('right') ? 1 : 0);
+  const z = (on('up') ? 1 : 0) - (on('down') ? 1 : 0);
+  return { move: [x, z], cam_yaw_deg: camYaw, jump: on('jump'), interact: on('interact'), pulse: on('pulse'), dash: on('dash') };
 }
 
 // ---------- game flow ----------
 let mode = 'menu', prevMode = 'menu';
 let night = 1, sim = null, nightScores = {};
 const meshes = { lanterns: new Map(), shades: new Map(), motes: new Map(), drifters: new Map(), charms: new Map() };
-const SCREENS = ['menu', 'intro', 'result', 'dawn', 'pause', 'settings'];
+const SCREENS = ['menu', 'intro', 'result', 'dawn', 'pause', 'settings', 'save', 'board'];
+let runSeed = 0;
 function setMode(m) {
   if (m === 'settings') prevMode = mode;
   mode = m;
@@ -255,7 +303,17 @@ document.body.addEventListener('click', (e) => {
   unlock();
   startMusic();
   ({
-    start: () => { nightScores = {}; showIntro(1); },
+    start: () => { nightScores = {}; runSeed = (Math.random() * 2 ** 31) | 0; showIntro(1); },
+    'keys-reset': () => { settings.keys = { ...DEFAULT_KEYS }; saveSettings(); renderBinds(); },
+    board: () => showBoard(),
+    save: () => {
+      const total = Object.values(nightScores).reduce((a, b) => a + b, 0);
+      $('save-text').textContent = `Tổng điểm: ${total} · Số Đêm thắng: ${Object.keys(nightScores).length}`;
+      $('save-err').textContent = '';
+      setMode('save');
+      $('save-name').focus();
+    },
+    'save-ok': () => saveScore(),
     play: () => setMode('play'),
     next: () => showIntro(night + 1),
     retry: () => showIntro(night),
@@ -275,7 +333,7 @@ function showIntro(n) {
 }
 function startNight(n) {
   for (const map of Object.values(meshes)) { for (const m of map.values()) scene.remove(m); map.clear(); }
-  sim = createSim(tuning, { seed: (Math.random() * 2 ** 31) | 0, night: n });
+  sim = createSim(tuning, { seed: runSeed + n - 1, night: n });
   buildLevel(sim.level);
   for (const l of sim.state.lanterns) {
     const g = makeLantern();
@@ -301,8 +359,39 @@ function finishNight(result, reason) {
     const why = { dawn_survived: 'Đảo vẫn sáng khi bình minh tới.', dawn: 'Bình minh tới nhưng không đủ đèn còn sáng.', no_flames: 'Mây đã mất hết Ngọn Lửa.' }[reason];
     $('res-text').textContent = `${why} Điểm Đêm: ${sim.state.score} · Tổng điểm: ${total}`;
     $('res-next').style.display = won ? '' : 'none';
+    $('res-save').style.display = won ? 'none' : ''; // after a loss the run can be saved
     setMode('result');
   }, 900);
+}
+
+// ---------- leaderboard (stored on disk by server.js) ----------
+import { validName, isoWithOffset } from '/src/leaderboard.js';
+async function saveScore() {
+  const name = $('save-name').value.normalize('NFC').trim();
+  if (!validName(name)) { $('save-err').textContent = '⚠ Tên cần 3–12 ký tự: chữ, số hoặc _'; return; }
+  const entry = { name, score: Object.values(nightScores).reduce((a, b) => a + b, 0), nights_won: Object.keys(nightScores).length,
+    achieved_at: isoWithOffset(new Date()), seed: runSeed };
+  const r = await fetch('/api/leaderboard', { method: 'POST', body: JSON.stringify(entry) });
+  if (!r.ok) { $('save-err').textContent = '⚠ Không lưu được: ' + (await r.json()).error; return; }
+  showBoard();
+}
+async function showBoard() {
+  const { entries } = await (await fetch('/api/leaderboard')).json();
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  $('board-table').innerHTML = '<tr><th>#</th><th>Tên</th><th>Điểm</th><th>Đêm thắng</th><th>Thời điểm</th></tr>' +
+    (entries.length ? entries.map((e, i) => `<tr><td>${i + 1}</td><td>${esc(e.name)}</td><td>${e.score}</td><td>${e.nights_won}</td><td>${esc(e.achieved_at.slice(0, 16).replace('T', ' '))}</td></tr>`).join('')
+      : '<tr><td colspan="5">Chưa có ai</td></tr>');
+  setMode('board');
+}
+
+// ---------- accessibility cues (subtitles / visual indicators) ----------
+let cueTimer = 0, shadeCue = null, lowWarned = new Set(), shake = 0;
+function cue(msg, secs = 2.5) { $('cue').textContent = msg; cueTimer = secs; }
+function hitFeedback() {
+  if (settings.rm) return; // reduced motion: no camera shake, no screen flash
+  shake = 0.35;
+  $('flash').style.opacity = 0.35;
+  setTimeout(() => ($('flash').style.opacity = 0), 120);
 }
 
 // ---------- events -> sound / effects ----------
@@ -319,9 +408,11 @@ function onEvent(e) {
     case 'charm_picked': sfx.charm(); toast('Bùa Gió! Chạy nhanh hơn, lướt không cần chờ'); break;
     case 'drifter_steal': sfx.steal(); toast(`Gió Lạc cướp mất ${e.data.amount} đom đóm!`); break;
     case 'drifter_drop': toast('Gió Lạc đánh rơi đom đóm!'); break;
-    case 'shade_spawned': sfx.shade(); break;
+    case 'shade_spawned': sfx.shade(); cue('⚠ Bóng Mực xuất hiện!'); shadeCue = { id: e.data.id, t: 3 }; break;
+    case 'fuel_drain': cue(`⚠ Bóng Mực đang hút dầu đèn ${e.data.lantern_id}`); break;
     case 'player_hit':
       sfx.hit();
+      hitFeedback();
       toast(e.data.by === 'fall' ? `Mây rơi khỏi đảo! Còn ${e.data.flames} Ngọn Lửa` : `Bóng Mực chạm vào Mây! Còn ${e.data.flames} Ngọn Lửa`);
       break;
     case 'pulse': {
@@ -385,17 +476,37 @@ function sync(t) {
   ambient.intensity = 0.15 + 0.55 * k;
   scene.fog.density = 0.03 - 0.018 * k;
 
-  syncMap(meshes.shades, s.shades, makeShade, (g, sh) => {
-    g.position.set(sh.x, sh.y + Math.sin(t * 3 + sh.x) * 0.12, sh.z);
-    g.lookAt(P.x, g.position.y, P.z);
-    const stunned = sh.state === 'stunned';
-    g.userData.body.material.color.setHex(stunned ? C.shadeStun : C.shade);
-    g.scale.setScalar(sh.state === 'spawning' ? 1 - sh.left / STD.shade_spawning_ticks : 1);
-  });
-  syncMap(meshes.motes, s.motes, makeMote, (m, mo) => {
-    m.position.set(mo.x, mo.y + 0.9 + Math.sin(t * 4 + mo.x * 3) * 0.2, mo.z);
-    m.visible = mo.ttl === null || mo.ttl > 90 || Math.floor(t * 8) % 2 === 0; // blink before TTL ends
-  });
+  const nS = Math.min(s.shades.length, MAX_SHADES);
+  for (let i = 0; i < nS; i++) {
+    const sh = s.shades[i];
+    const k = sh.state === 'spawning' ? Math.max(0.05, 1 - sh.left / STD.shade_spawning_ticks) : 1;
+    _p.set(sh.x, sh.y + Math.sin(t * 3 + sh.x) * 0.12, sh.z);
+    const yaw = Math.atan2(P.x - sh.x, P.z - sh.z);
+    _q.setFromEuler(_e.set(0, yaw, 0));
+    shadeBodyI.setMatrixAt(i, _m.compose(_p, _q, _s.setScalar(k)));
+    shadeBodyI.setColorAt(i, _c.setHex(sh.state === 'stunned' ? C.shadeStun : sh.state === 'drain' ? 0x2a0a3a : C.shade));
+    shadeRimI.setMatrixAt(i, _m.compose(_p, _q, _s.setScalar(k * 1.12)));
+    for (let j = 0; j < 2; j++) {
+      _off.set(j ? 0.25 : -0.25, 0.15, 0.65).multiplyScalar(k).applyQuaternion(_q).add(_p);
+      eyeI.setMatrixAt(i * 2 + j, _m.compose(_off, _q, _s.setScalar(k)));
+    }
+  }
+  shadeBodyI.count = shadeRimI.count = nS;
+  eyeI.count = nS * 2;
+  for (const m of [shadeBodyI, shadeRimI, eyeI]) m.instanceMatrix.needsUpdate = true;
+  if (shadeBodyI.instanceColor) shadeBodyI.instanceColor.needsUpdate = true;
+  let nM = 0;
+  for (const mo of s.motes) {
+    if (nM >= MAX_MOTES) break;
+    if (!(mo.ttl === null || mo.ttl > 90 || Math.floor(t * 8) % 2 === 0)) continue; // blink before TTL ends
+    _p.set(mo.x, mo.y + 0.9 + Math.sin(t * 4 + mo.x * 3) * 0.2, mo.z);
+    _m.compose(_p, _q.identity(), _s.setScalar(1));
+    moteI.setMatrixAt(nM, _m);
+    haloI.setMatrixAt(nM, _m);
+    nM++;
+  }
+  moteI.count = haloI.count = nM;
+  moteI.instanceMatrix.needsUpdate = haloI.instanceMatrix.needsUpdate = true;
   syncMap(meshes.drifters, s.drifters.filter((d) => d.state !== 'removed'), makeDrifter, (g, d) => {
     g.position.set(d.x, d.y, d.z);
     g.lookAt(P.x, d.y, P.z);
@@ -455,6 +566,28 @@ function sync(t) {
       arrow.style.transform = `rotate(${Math.atan2(ax, ay)}rad)`;
     }
   }
+  // low-fuel cue (once per drop below 30) + last 10 s cue + arrow to a newly spawned shade
+  for (const l of s.lanterns) {
+    const low = l.lit && l.fuel < tuning.low_fuel_threshold * 60;
+    if (low && !lowWarned.has(l.id)) { lowWarned.add(l.id); cue(`⚠ Đèn ${l.id} sắp cạn dầu`); }
+    if (!low) lowWarned.delete(l.id);
+  }
+  if (tl <= 10 && tl > 0) $('cue').textContent = `⏳ ${Math.ceil(tl)} giây cuối!`;
+  const sa = $('sarrow');
+  sa.style.display = 'none';
+  const tgt = shadeCue && s.shades.find((x) => x.id === shadeCue.id);
+  if (tgt) {
+    tmpV.set(tgt.x, tgt.y, tgt.z).project(camera);
+    let ax = tmpV.z > 1 ? -tmpV.x : tmpV.x, ay = tmpV.z > 1 ? -tmpV.y : tmpV.y;
+    if (tmpV.z > 1 || Math.abs(ax) > 1 || Math.abs(ay) > 1) {
+      const m = Math.max(Math.abs(ax), Math.abs(ay)) || 1;
+      ax = (ax / m) * 0.9; ay = (ay / m) * 0.88;
+      sa.style.display = 'block';
+      sa.style.left = `${((ax + 1) / 2) * innerWidth - 12}px`;
+      sa.style.top = `${((1 - ay) / 2) * innerHeight - 13}px`;
+      sa.style.transform = `rotate(${Math.atan2(ax, ay)}rad)`;
+    }
+  }
   // wind warning 2 s before each gust (night 3)
   const wind = $('wind');
   const toGust = STD.wind_every - (s.simTick % STD.wind_every);
@@ -468,6 +601,8 @@ function sync(t) {
 let acc = 0, last = performance.now(), elapsed = 0, fpsFrames = 0, fpsT = 0;
 window.__fps = { samples: [] }; // average FPS per second, readable from the console for proof
 function frame(now) {
+  const rawDtMs = now - last;
+  if (bench) benchFrame(now, rawDtMs);
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   elapsed += dt;
@@ -486,7 +621,7 @@ function frame(now) {
       while (acc >= 1 / TICK_RATE && mode === 'play') {
         acc -= 1 / TICK_RATE;
         const wasGrounded = sim.state.player.grounded;
-        for (const e of sim.step(readInput())) onEvent(e);
+        for (const e of sim.step(BENCH ? {} : readInput())) onEvent(e);
         const Pn = sim.state.player;
         if (wasGrounded && !Pn.grounded && !Pn.launch && Pn.vy > STD.jump_speed - 1) sfx.jump();
         if (sim.state.state !== 'playing') break;
@@ -500,11 +635,24 @@ function frame(now) {
     }
     pulseFx = pulseFx.filter((fx) => (fx.t < 0.6 ? true : (scene.remove(fx.ring), false)));
     if (toastTimer > 0 && (toastTimer -= dt) <= 0) $('toast').style.opacity = 0;
+    if (cueTimer > 0 && (cueTimer -= dt) <= 0) $('cue').textContent = '';
+    if (shadeCue && (shadeCue.t -= dt) <= 0) shadeCue = null;
     sync(elapsed);
     const th = (camYaw * Math.PI) / 180, P = sim.state.player;
     const cy = Math.max(P.y, -2);
-    camera.position.set(P.x - Math.sin(th) * 9, cy + 5.5, P.z - Math.cos(th) * 9);
-    camera.lookAt(P.x, cy + 1.2, P.z);
+    if (bench) {
+      const a = bench.start === null ? 0 : (2 * Math.PI * ((now - bench.start) / 1000)) / 15; // CCW from above: (cos a, sin a)
+      camera.position.set(30 * Math.cos(a), 15, 30 * Math.sin(a));
+      camera.lookAt(0, 0, 0);
+    } else {
+      camera.position.set(P.x - Math.sin(th) * 9, cy + 5.5, P.z - Math.cos(th) * 9);
+      camera.lookAt(P.x, cy + 1.2, P.z);
+      if (shake > 0 && !settings.rm) { // camera shake on hit (off with reduced motion)
+        shake -= dt;
+        camera.position.x += (Math.random() - 0.5) * shake;
+        camera.position.y += (Math.random() - 0.5) * shake;
+      }
+    }
   } else {
     camera.position.set(Math.sin(elapsed * 0.1) * 60, 30, Math.cos(elapsed * 0.1) * 60);
     camera.lookAt(0, 0, 0);
@@ -512,7 +660,52 @@ function frame(now) {
   }
   for (const id of ['flames', 'clock', 'topright', 'bar', 'cds']) $(id).style.visibility = sim && mode !== 'menu' ? 'visible' : 'hidden';
   renderer.render(scene, camera);
+  if (bench && bench.done) return; // bench finished: stop rendering so the browser is idle while memory is sampled
   requestAnimationFrame(frame);
 }
 applyCb();
+if (BENCH) startBench();
 requestAnimationFrame(frame);
+
+// ---------- benchmark scene (Ticket-04 §1) ----------
+// Night 1, 200 wandering shades spread evenly over the island (seed), 100 motes, L1-L3 lit with fuel 100,
+// Mây idle at (0,0,0); camera orbits r=30 at Y=15 around the origin, CCW from above, 15 s per lap.
+var bench; // set by startBench() (called above, so no initializer here)
+function startBench() {
+  const rng = mulberry32(BENCH.seed);
+  const disk = (rmax) => { const a = rng() * 2 * Math.PI, r = rmax * Math.sqrt(rng()); return [r * Math.cos(a), r * Math.sin(a)]; };
+  const shades = Array.from({ length: 200 }, (_, i) => { const [x, z] = disk(38); return { id: 'S' + (i + 1), pos: [x, 1, z], state: 'wander' }; });
+  const motes = Array.from({ length: 100 }, () => { const [x, z] = disk(38); return [x, 0, z]; });
+  const scenario = { random_motes: false, random_shades: false, random_drifters: false, wind_enabled: false, shades, motes,
+    lanterns: ['L1', 'L2', 'L3'].map((id) => ({ id, lit: true, fuel: 100 })), player: { pos: [0, 0, 0] } };
+  for (const s of SCREENS) $(s).classList.remove('show');
+  sim = createSim(tuning, { seed: BENCH.seed, night: 1, scenario, bench: true });
+  buildLevel(sim.level);
+  for (const l of sim.state.lanterns) { const g = makeLantern(); g.position.set(l.x, l.y, l.z); scene.add(g); meshes.lanterns.set(l.id, g); }
+  mode = 'play';
+  bench = { start: null, dts: [], measuring: false, firstFrameEpoch: null, done: false };
+}
+function benchFrame(now, dtMs) {
+  const b = bench;
+  if (b.start === null) { b.start = now; b.firstFrameEpoch = performance.timeOrigin + now; return; }
+  const t = (now - b.start) / 1000;
+  if (!b.measuring && t >= 3) { b.measuring = true; b.mStart = now; fetch('/bench/measure-start'); return; }
+  if (b.measuring && !b.done) {
+    b.dts.push(dtMs);
+    if ((now - b.mStart) / 1000 >= BENCH.duration) {
+      b.done = true;
+      const N = b.dts.length, sum = b.dts.reduce((a, c) => a + c, 0);
+      const sorted = [...b.dts].sort((a, c) => a - c);
+      const k = Math.max(1, Math.ceil(0.01 * N));
+      const worst = sorted.slice(-k);
+      const gl = renderer.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      const r2 = (v) => Math.round(v * 100) / 100;
+      fetch('/bench/result', { method: 'POST', body: JSON.stringify({
+        frames: N, avg_fps: r2((1000 * N) / sum), p1_low_fps: r2(1000 / (worst.reduce((a, c) => a + c, 0) / k)),
+        frame_ms_p95: r2(sorted[Math.min(N - 1, Math.ceil(0.95 * N) - 1)]), first_frame_epoch_ms: b.firstFrameEpoch,
+        three: THREE.REVISION, gl_renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+        ua: navigator.userAgent, viewport: `${renderer.domElement.width}x${renderer.domElement.height}`,
+      }) });
+    }
+  }
+}
