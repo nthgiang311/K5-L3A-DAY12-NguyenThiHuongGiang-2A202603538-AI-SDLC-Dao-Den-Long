@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Đảo Đèn Lồng</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0718; font-family: system-ui, sans-serif; color: #ffe7c2; }
+    #hud { position: fixed; top: 12px; left: 12px; background: rgba(20, 10, 35, 0.7); padding: 10px 14px; border-radius: 10px; line-height: 1.6; font-size: 15px; }
+    #hud b { color: #ffb347; }
+    #help { position: fixed; bottom: 12px; left: 12px; font-size: 13px; opacity: 0.75; background: rgba(20, 10, 35, 0.6); padding: 6px 10px; border-radius: 8px; }
+    #toast { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); font-size: 16px; color: #ffd27a; text-shadow: 0 0 8px #ff9a2e; transition: opacity 0.4s; }
+    #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10, 4, 20, 0.7); }
+    #overlay h1 { font-size: 46px; margin: 0 0 10px; color: #ffb347; text-shadow: 0 0 18px #ff8a1e; }
+    #overlay p { font-size: 18px; margin: 6px; }
+  </style>
+  <script type="importmap">{ "imports": { "three": "/node_modules/three/build/three.module.js" } }</script>
+</head>
+<body>
+  <div id="hud"></div>
+  <div id="toast"></div>
+  <div id="help">WASD: đi · Space: nhảy · E: nạp đèn · F: tỏa sáng · ←/→ hoặc kéo chuột: xoay camera · R: chơi lại</div>
+  <div id="overlay"><h1 id="ov-title"></h1><p id="ov-text"></p><p>Nhấn <b>R</b> để chơi lại</p></div>
+  <script type="module" src="/web/main.js"></script>
+</body>
+</html>
