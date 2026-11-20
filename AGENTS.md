@@ -1,6 +1,6 @@
 # AGENTS.md – Đảo Đèn Lồng
 
-Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.1**. Node >= 18, không phụ thuộc gì ngoài `three`.
+Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.2** (đèn có nhiên liệu, thắng ở bình minh – xem `docs/adr/`). Node >= 18, không phụ thuộc gì ngoài `three`.
 
 ## Lệnh
 - Cài: `npm install` · Chơi: `npm start` (http://localhost:8080)
@@ -19,7 +19,9 @@ Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.1**.
 ## Quy ước
 - Thứ tự một tick **bắt buộc theo Ticket-02**: pause → bộ đếm → di chuyển Mây + rơi → nhặt → đèn → vùng an toàn → Tỏa Sáng → Bóng Mực/Gió Lạc di chuyển → chạm (Gió Lạc trước, Bóng Mực theo id) → sinh → thắng/thua.
 - Bộ đếm đặt ở tick t giảm từ tick t+1 (ở bước 2): "hiệu lực N tick" ⇒ đặt N. Tính kỳ vọng test theo quy ước này, đừng đoán.
-- Test cũ bị ticket mới đổi luật: sửa kỳ vọng + đánh dấu `[P2 change]` + ghi lý do trong `docs/notes/phase-N.md`.
+- Đổi luật cốt lõi: viết ADR trong `docs/adr/` + mục breaking changes trong `CHANGELOG.md` trước khi code.
+- Nhiên liệu lưu số nguyên đơn vị 1/60 (`fuel × 60`); chỉ làm tròn 1 chữ số khi xuất.
+- Test cũ bị ticket mới đổi luật: sửa kỳ vọng + đánh dấu `[P2 change]`/`[P3 change]` + ghi lý do trong `docs/notes/phase-N.md`.
 - Khoảng cách luôn theo mặt phẳng XZ, "trong bán kính" là `<=`. Timer đếm bằng tick nguyên.
 - Mỗi yêu cầu mới: ghi giả định + tiêu chí vào `docs/notes/phase-N.md` TRƯỚC, viết test, rồi mới code.
 - Thực thể/hiệu ứng sáng tạo thêm chỉ ở `web/` hoặc phải tắt khi headless; không được đổi output headless.
@@ -31,3 +33,4 @@ Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.1**.
 - Test/hook không phụ thuộc thư mục tạm hệ thống hay npm: ổ C đầy từng làm `npm test` đỏ giả (ENOSPC). File tạm của test để ở `.tmp/`.
 - Kịch bản test có Bóng Mực đuổi: Mây đứng yên sẽ chết sau 3 lần chạm (~180 tick) → sim dừng; cho nhiều `flames` nếu cần chạy lâu.
 - Edge headless không chụp được ảnh trên máy này (đường dẫn có dấu / swiftshader): đừng tốn token thử lại, ghi "cần chơi thử".
+- Script sửa nhiều file: ghi ra `.tmp/*.py` rồi chạy, đừng nhét script dài vào heredoc của bash (lỗi cú pháp). Không chèn comment giữa một dòng code.

@@ -37,3 +37,14 @@ dừng thử chụp màn hình Edge sau 2 lần (không ra ảnh); tách phần 
 **AI sai:** 5 kỳ vọng test lệch 1 tick vì quên quy ước "bộ đếm giảm từ tick sau"; 1 lỗi code thật (bộ đếm flee của Gió Lạc giảm ngay trong tick đặt nó → biến mất sớm 1 tick);
 test TTL để Mây chết trước khi kiểm; scenario pulse đặt tick quá sớm, scenario bùa cho Mây đi khỏi cầu. Đã ghi quy ước bộ đếm vào AGENTS.md.
 Ngoài ra một test không bắt được lỗi gài (tắt đẩy Bóng Mực ra khỏi vùng an toàn) → thêm test cho Bóng Mực đang choáng.
+
+## Phase 3
+| Bước | Việc agent làm | Ước tính token |
+|---|---|---|
+| Hỗ trợ ngoài lề | Cài/đăng nhập `gh`, ghi kết quả chơi thử Phase 2 | ~10k |
+| Code v1.2 | Một script Python sửa contract + sim + validator (lần đầu lỗi heredoc, ghi lại ra file) | ~30k |
+| Test | Sửa 5 test bị thay, thêm 12 test luật mới, sửa 3 test viết sai + 2 lỗi cú pháp do sửa vội | ~30k |
+| ADR, CHANGELOG, proof, UI tối thiểu, docs | | ~30k |
+| **Tổng Phase 3** | | **~100k** |
+
+**Cách tiết kiệm (30 phút):** ưu tiên headless (chấm điểm) → test → ADR/CHANGELOG (DoD) → UI tối thiểu; gom sửa vào script; không thử chụp màn hình.

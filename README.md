@@ -5,7 +5,7 @@
 
 Game 3D góc nhìn thứ ba. Mây – người giữ đèn nhỏ đội nón lá – gom đom đóm qua **3 Đêm** (Đảo Bến, Đảo Cau, Đảo Chuông)
 để thắp lại các Đèn Lồng Lớn, né Bóng Mực và Gió Lạc. Viết bằng JavaScript: logic thuần (`src/sim/`) dùng chung cho
-bản 3D (three.js, chạy trên trình duyệt) và chế độ headless theo **Test Contract v1.1**.
+bản 3D (three.js, chạy trên trình duyệt) và chế độ headless theo **Test Contract v1.2**.
 
 ## Cài đặt và chạy (macOS / Linux / Windows, cần Node.js ≥ 18)
 ```bash
@@ -25,22 +25,22 @@ npm start          # mở http://localhost:8080
 | ← / → hoặc kéo chuột | Xoay camera (độ nhạy chỉnh trong Cài đặt) |
 | Esc / P | Tạm dừng: Tiếp tục / Chơi lại Đêm / Cài đặt / Về menu |
 
-## Luật chơi và cách tính điểm (số chuẩn Ticket-02)
-- Mang tối đa **10** đom đóm (tự nhặt khi cách ≤ 1 m). Mỗi đèn cần **10**, nạp nhiều lần được, đèn nhớ tiến độ.
-- **Bóng Mực** phát hiện trong 12 m, bỏ đuổi ngoài 18 m, chạy 4 m/s (Đêm 3: 4,5). Bị chạm: −1 Ngọn Lửa (có 3), rơi một nửa đom đóm ra quanh mình (nhặt lại được trong 8 s), bất tử 1,5 s.
-- **Tỏa Sáng**: tốn 3 đom đóm, bán kính 5 m, choáng 2 s và đẩy lùi 4 m, hồi chiêu 3 s. Bóng Mực không vào được vòng 6 m quanh đèn **đã sáng**.
-- **Lướt**: 14 m/s trong 0,2 s, hồi chiêu 1,5 s. **Rơi khỏi đảo**: −1 Ngọn Lửa, mất hết đom đóm, hồi sinh ở điểm xuất phát.
-- **Gió Lạc** (Đêm 2–3) đuổi khi bạn mang ≥ 5 đom đóm và cướp 3 con; Tỏa Sáng trúng nó thì nó đánh rơi lại. **Bùa Gió**: 10 s chạy nhanh 7,2 m/s và lướt không hồi chiêu.
-- Đêm 2: hai đảo nối bằng cầu tre, có bục nhảy. Đêm 3: đảo 3 tầng, dốc, bục nhảy lên tháp chuông, gió mạnh mỗi 30 s.
-- **Thắng** Đêm khi thắp hết đèn; **thua** khi hết Ngọn Lửa hoặc bình minh tới (300/330/360 s).
-- **Điểm:** +10 mỗi đom đóm **nạp** vào đèn · +100 mỗi đèn thắp · +5 mỗi Bóng Mực trúng Tỏa Sáng · khi thắng: +2 × giây còn lại + 50 × Ngọn Lửa còn lại. Tổng điểm = tổng các Đêm đã thắng.
+## Luật chơi và cách tính điểm (Ticket-02 + Ticket-03)
+- **Mục tiêu mỗi Đêm: giữ đảo sáng tới bình minh.** Thắng nếu còn sống khi hết giờ (240/270/300 s) và số đèn **đang sáng** ≥ 60% (Đêm 1: 3/5, Đêm 2: 4/6, Đêm 3: 5/7). Thắp hết đèn không kết thúc Đêm sớm.
+- Đèn chưa từng sáng cần **10** đom đóm; đèn đã tắt thắp lại cần **5**. Đèn sáng có **dầu 100**, hao 1/s; bấm **E** ở đèn sáng để **châm dầu** (+10 dầu mỗi đom đóm). Dầu < 30: đèn nhấp nháy và mất vùng an toàn.
+- Mang tối đa **10 + 2 × số lần thắp thành công** (tối đa 20). Tự nhặt khi cách ≤ 1 m.
+- **Bóng Mực** đuổi trong 12 m (4 m/s, Đêm 3: 4,5); khi lang thang sẽ tìm tới đèn yếu để **hút dầu** (5/s). Bị chạm: −1 Ngọn Lửa (có 3), rơi một nửa đom đóm, bất tử 1,5 s.
+- **Tỏa Sáng**: tốn 3 đom đóm, bán kính 5 m, choáng 2 s, đẩy lùi 4 m, hồi chiêu 3 s. **Lướt**: 14 m/s × 0,2 s, hồi chiêu 1,5 s. **Rơi khỏi đảo**: −1 Ngọn Lửa, mất hết đom đóm.
+- **Gió Lạc** (Đêm 2–3) cướp 3 đom đóm khi bạn mang ≥ 5. **Bùa Gió**: 10 s chạy 7,2 m/s, lướt không hồi chiêu.
+- **Điểm:** +5 mỗi đom đóm nạp/châm · +100 thắp lần đầu · +40 thắp lại · +5 mỗi Bóng Mực trúng Tỏa Sáng (+15 nếu nó đang hút dầu) · khi thắng: mỗi đèn đang sáng +50 + dầu còn lại, mỗi Ngọn Lửa +50. Tổng điểm = tổng các Đêm đã thắng.
+- **Cài đặt:** âm lượng, độ nhạy chuột, **Bảng màu dễ phân biệt** (mù màu) – được lưu.
 
-Mọi số tuning nằm ở `game.contract.json` (code đọc trực tiếp). Giả định: [phase-1](docs/notes/phase-1.md), [phase-2](docs/notes/phase-2.md).
+Mọi số tuning nằm ở `game.contract.json` (code đọc trực tiếp). Giả định: [phase-1](docs/notes/phase-1.md), [phase-2](docs/notes/phase-2.md), [phase-3](docs/notes/phase-3.md). Quyết định thiết kế: [docs/adr/](docs/adr/). Thay đổi phá vỡ tương thích: [CHANGELOG.md](CHANGELOG.md).
 
 ## Test và chế độ headless
 ```bash
-npm test                 # 49 test: luật chơi + CLI headless + exit code + tính tất định
-npm run proof            # chạy scenario cho từng tính năng, đo hiệu năng, sinh docs/proof/phase-2/SUMMARY.md
+npm test                 # 60 test: luật chơi + CLI headless + exit code + tính tất định
+npm run proof            # chạy scenario cho từng tính năng, đo hiệu năng, sinh docs/proof/phase-3/SUMMARY.md
 node src/headless.js --seed 42 --night 1 --ticks 18000 --out out.jsonl \
   --scenario tests/scenarios/win_run.scenario.json --inputs tests/scenarios/win_run.inputs.json
 ```
@@ -54,7 +54,7 @@ Một Đêm đầy đủ (21.600 tick) chạy khoảng 1–2 s. CI (GitHub Actio
 - Toàn bộ âm thanh được **tổng hợp bằng WebAudio** (không dùng file ngoài).
 
 Tất cả chỉ nằm ở `web/` (hiển thị/âm thanh), không chạm `src/sim/`, nên output headless không đổi – bằng chứng: `npm test`
-và hash tất định trong `docs/proof/phase-2/SUMMARY.md`.
+và hash tất định trong `docs/proof/phase-3/SUMMARY.md`.
 
 ## Tài liệu
 - Ghi chép từng phase (giả định, tiêu chí, đánh giá): [docs/notes/](docs/notes/) · Nhật ký dùng AI: [docs/notes/ai-log.md](docs/notes/ai-log.md)
