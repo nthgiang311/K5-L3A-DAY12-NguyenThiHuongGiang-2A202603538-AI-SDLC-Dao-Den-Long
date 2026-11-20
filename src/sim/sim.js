@@ -68,7 +68,8 @@ const hd = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const idNum = (id) => parseInt(String(id).replace(/^\D+/, ''), 10) || 0;
 const byId = (a, b) => idNum(a.id) - idNum(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-export function createSim(tuning, { seed = 0, scenario = null, night = 1 } = {}) {
+// bench: Ticket-04 benchmark scene - no spawning, damage, pickup, fuel decay or night end; AI still runs.
+export function createSim(tuning, { seed = 0, scenario = null, night = 1, bench = false } = {}) {
   const T = tuning;
   const L = LEVELS[night];
   if (!L) throw new Error(`unknown night ${night}`);
@@ -331,7 +332,7 @@ export function createSim(tuning, { seed = 0, scenario = null, night = 1 } = {})
     if (s.wind.active > 0 && --s.wind.active === 0) s.wind.dir = null;
     // fuel: decay 1/s + 5/s per draining shade (integer 1/60 units)
     for (const l of s.lanterns) {
-      if (!l.lit) continue;
+      if (!l.lit || bench) continue;
       const drainers = s.shades.filter((sh) => sh.state === 'drain' && sh.targetL === l.id).length;
       l.fuel -= DECAY + DRAIN * drainers;
     }
@@ -355,7 +356,7 @@ export function createSim(tuning, { seed = 0, scenario = null, night = 1 } = {})
     movePlayer(inp, edge, events);
 
     // 4. pick up motes and charms
-    if (P.fallWait === 0) {
+    if (P.fallWait === 0 && !bench) {
       for (let i = 0; i < s.motes.length && P.carried < capacity(); ) {
         const m = s.motes[i];
         if (m.born < s.simTick && hd(P.x, P.z, m.x, m.z) <= T.pickup_radius && Math.abs(P.y - m.y) <= STD.pickup_dy) {
@@ -467,7 +468,7 @@ export function createSim(tuning, { seed = 0, scenario = null, night = 1 } = {})
     for (const dr of s.drifters) moveDrifter(dr);
 
     // 9. contacts: drifters steal first, then shades hit (ascending id)
-    if (P.fallWait === 0) {
+    if (P.fallWait === 0 && !bench) {
       for (const dr of s.drifters) {
         if (dr.state !== 'chase' || dr.stole || P.carried <= 0) continue;
         if (hd(dr.x, dr.z, P.x, P.z) <= STD.drifter_hit_r) {
@@ -498,6 +499,7 @@ export function createSim(tuning, { seed = 0, scenario = null, night = 1 } = {})
       }
     }
 
+    if (bench) return events; // bench: no spawns, no end conditions
     // 10. scheduled spawns (new entities interact from the next tick)
     if (s.randomMotes && s.simTick % STD.mote_spawn_every === 0 && s.motes.length < STD.motes_cap) spawnRandomMote();
     if (s.randomShades) {

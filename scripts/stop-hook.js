@@ -9,7 +9,7 @@ process.stdin.on('end', () => {
     if (JSON.parse(input || '{}').stop_hook_active) process.exit(0); // avoid infinite loop
   } catch {}
   // run node directly: npm itself can fail for unrelated reasons (e.g. no disk space for its logs)
-  const r = spawnSync(process.execPath, ['--test', 'tests/sim.test.js', 'tests/headless.test.js'], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['--test', 'tests/sim.test.js', 'tests/headless.test.js', 'tests/leaderboard.test.js'], { encoding: 'utf8' });
   if (r.status !== 0) {
     const out = (r.stdout || '') + (r.stderr || '') + (r.error ? r.error.message : '');
     const lines = out.split('\n');

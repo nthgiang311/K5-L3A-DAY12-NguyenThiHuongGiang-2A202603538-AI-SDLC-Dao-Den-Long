@@ -6,7 +6,9 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/sim.test.js tests/headless.test.js",
+    "test": "node --test tests/sim.test.js tests/headless.test.js tests/leaderboard.test.js",
+    "bench": "node scripts/bench.js --seed 42 --duration 30 --out bench.json",
+    "soak": "node --expose-gc --jitless scripts/soak.js --seed 7 --nights 10 --out soak.json",
     "headless": "node src/headless.js",
     "proof": "node scripts/proof.js"
   },

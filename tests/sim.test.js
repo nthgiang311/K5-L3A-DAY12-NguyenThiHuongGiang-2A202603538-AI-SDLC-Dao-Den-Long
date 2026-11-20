@@ -25,8 +25,10 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
 // ---------------- contract ----------------
 // [P3 change] v1.2: nights 240/270/300 s, fuel keys, new score table (time bonus removed)
-test('contract v1.2: standard numbers from Ticket-02 + Ticket-03', () => {
-  assert.equal(contract.contract_version, '1.2');
+// [P4 change] v1.3 adds bench_cmd and soak_cmd; numbers unchanged
+test('contract v1.3: standard numbers from Ticket-02 + Ticket-03, bench/soak commands', () => {
+  assert.equal(contract.contract_version, '1.3');
+  for (const k of ['bench_cmd', 'soak_cmd', 'headless_cmd', 'run_cmd', 'build_cmd']) assert.ok(contract[k], k);
   const expect = { player_speed: 6, carry_capacity: 10, lantern_cost: 10, pickup_radius: 1, interact_radius: 2, pulse_cost: 3,
     pulse_radius: 5, night1_duration_s: 240, night2_duration_s: 270, night3_duration_s: 300, fuel_max: 100, fuel_decay_per_s: 1,
     fuel_per_mote: 10, relight_cost: 5, win_ratio: 0.6, drain_per_s: 5, low_fuel_threshold: 30, capacity_max: 20, flames: 3, invuln_s: 1.5,
