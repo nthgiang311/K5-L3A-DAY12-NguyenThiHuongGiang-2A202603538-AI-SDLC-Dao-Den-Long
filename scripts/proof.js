@@ -1,12 +1,12 @@
 // Runs the headless proof scenarios through the real CLI and writes outputs + an auto-generated
 // summary to docs/proof/<phase>/. Nothing in that folder is edited by hand.
-// Usage: node scripts/proof.js [phase-3]
+// Usage: node scripts/proof.js [phase-4]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const phase = process.argv[2] || 'phase-3';
+const phase = process.argv[2] || 'phase-4';
 const OUT = path.join('docs', 'proof', phase);
 fs.mkdirSync(OUT, { recursive: true });
 const S = 'tests/scenarios/';
