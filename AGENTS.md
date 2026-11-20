@@ -24,3 +24,4 @@ Game 3D (three.js) + chế độ headless theo **Test Contract v1.0**. Node >= 1
 
 ## Bài học (cập nhật khi agent sai lặp lại)
 - Kỳ vọng của scenario proof phải khớp luật: người đứng yên sẽ bị Bóng Mực chạm chết trước lần sinh 30 s.
+- Test/hook không phụ thuộc thư mục tạm hệ thống hay npm: ổ C đầy từng làm `npm test` đỏ giả (ENOSPC). File tạm của test để ở `.tmp/`.

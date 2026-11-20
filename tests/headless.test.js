@@ -3,12 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ddl-'));
+// scratch output inside the repo (.tmp/ is gitignored) so tests don't depend on the system temp drive
+fs.mkdirSync(path.join(ROOT, '.tmp'), { recursive: true });
+const TMP = fs.mkdtempSync(path.join(ROOT, '.tmp', 'ddl-'));
 const SCN = path.join(ROOT, 'tests', 'scenarios');
 
 function headless(args) {

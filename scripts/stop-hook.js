@@ -8,10 +8,14 @@ process.stdin.on('end', () => {
   try {
     if (JSON.parse(input || '{}').stop_hook_active) process.exit(0); // avoid infinite loop
   } catch {}
-  const r = spawnSync('npm', ['test', '--silent'], { encoding: 'utf8', shell: true });
+  // run node directly: npm itself can fail for unrelated reasons (e.g. no disk space for its logs)
+  const r = spawnSync(process.execPath, ['--test', 'tests/**/*.test.js'], { encoding: 'utf8' });
   if (r.status !== 0) {
-    const tail = (r.stdout + r.stderr).split('\n').filter((l) => /not ok|✖|fail|Error/.test(l)).slice(0, 20).join('\n');
-    process.stderr.write(`npm test đang đỏ – sửa trước khi kết thúc:\n${tail}\n`);
+    const out = (r.stdout || '') + (r.stderr || '') + (r.error ? r.error.message : '');
+    const lines = out.split('\n');
+    const fails = lines.filter((l) => /not ok|✖|ENOSPC|Error/.test(l)).slice(0, 20);
+    const detail = (fails.length ? fails : lines.slice(-15)).join('\n');
+    process.stderr.write(`Test đang đỏ – sửa trước khi kết thúc:\n${detail}\n`);
     process.exit(2);
   }
   process.exit(0);
