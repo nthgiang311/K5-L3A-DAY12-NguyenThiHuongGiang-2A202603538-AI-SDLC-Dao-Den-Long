@@ -1,10 +1,11 @@
 # AGENTS.md – Đảo Đèn Lồng
 
-Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.2** (đèn có nhiên liệu, thắng ở bình minh – xem `docs/adr/`). Node >= 18, không phụ thuộc gì ngoài `three`.
+Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.3** (đèn có nhiên liệu, thắng ở bình minh – xem `docs/adr/`). Node >= 18, không phụ thuộc gì ngoài `three`.
 
 ## Lệnh
 - Cài: `npm install` · Chơi: `npm start` (http://localhost:8080)
 - Test (unit + headless CLI): `npm test` (liệt kê file test, không dùng glob: Node < 21 không hỗ trợ) — phải xanh trước khi kết thúc việc
+- Bench: `node scripts/bench.js --seed 42 --duration 30 --out bench.json` (mở Chrome thật, ~1 phút) · Soak: `npm run soak`
 - Bằng chứng: `npm run proof` → `docs/proof/phase-N/` (sinh tự động, KHÔNG sửa tay)
 - Headless: `node src/headless.js --seed 1 --night 1|2|3 --ticks 600 --out out.jsonl [--scenario f] [--inputs f]`
 
@@ -34,3 +35,6 @@ Game 3D (three.js), 3 Đêm, + chế độ headless theo **Test Contract v1.2** 
 - Kịch bản test có Bóng Mực đuổi: Mây đứng yên sẽ chết sau 3 lần chạm (~180 tick) → sim dừng; cho nhiều `flames` nếu cần chạy lâu.
 - Edge headless không chụp được ảnh trên máy này (đường dẫn có dấu / swiftshader): đừng tốn token thử lại, ghi "cần chơi thử".
 - Script sửa nhiều file: ghi ra `.tmp/*.py` rồi chạy, đừng nhét script dài vào heredoc của bash (lỗi cú pháp). Không chèn comment giữa một dòng code.
+- Không chạy tác vụ nặng (wmic/PowerShell, test) song song với bench: làm sai số FPS. Kết quả bench/soak là file do lệnh sinh, không sửa tay.
+- Sửa regex/chuỗi có `
+` bằng script Node viết qua Write tool, không qua heredoc Python.

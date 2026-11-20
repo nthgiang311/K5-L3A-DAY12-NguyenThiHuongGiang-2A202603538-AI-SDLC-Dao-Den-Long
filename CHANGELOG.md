@@ -1,5 +1,16 @@
 # Changelog
 
+## [phase-4] / v1.0.0 – Contract v1.3 "Bình minh: phát hành"
+### Thêm
+- `bench_cmd` (`node scripts/bench.js`): cảnh bench chuẩn (200 Bóng Mực, 100 đom đóm, camera bay vòng), mở trình duyệt thật 1280×720, vsync tắt, ghi `bench.json`.
+- `soak_cmd` (`node --expose-gc --jitless scripts/soak.js`): 10 Đêm trong một tiến trình, ghi `soak.json`.
+- Bảng xếp hạng cục bộ (top 10, lưu `data/leaderboard.json`), màn hình từ menu, `node server.js --export-leaderboard out.json`.
+- Accessibility: đổi phím (báo trùng, khôi phục mặc định), phụ đề/chỉ báo (Bóng Mực xuất hiện + mũi tên, gió, 10 s cuối, đèn sắp cạn), giảm chuyển động, chữ ≥ 18 px và tùy chọn ×1,25.
+- Retro `docs/retro.md`, Release v1.0.0 (zip chạy được bằng `node server.js`).
+### Thay đổi
+- ⚠ `run_cmd` đổi từ `npm start` thành `node server.js` (để nhận `--export-leaderboard`). `npm start` vẫn chạy được.
+- Vẽ Bóng Mực và đom đóm bằng InstancedMesh; vật liệu Lambert; tắt MSAA (hiệu năng). Không đổi luật/headless.
+
 ## [phase-3] – Contract v1.2 "Đèn cạn dầu"
 ### ⚠ Breaking changes
 - **Luật thắng:** không còn thắng khi thắp hết đèn. Thắng chỉ ở bình minh nếu còn sống và đèn đang sáng ≥ ceil(0,6 × tổng) (3/5, 4/6, 5/7). `game_over.reason`: `dawn_survived` thay `all_lit` (không dùng nữa).
